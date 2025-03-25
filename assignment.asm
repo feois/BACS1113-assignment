@@ -19,7 +19,7 @@ username_attempt dd 3
 
 password_dialog db "Please enter password (Empty to cancel): ", 0
 wrong_password db "Wrong password! You can only attempt ", 0
-password db "test"
+password db "password"
 password_attempt dd 3
 
 menu_dialog db "Menu", 0
