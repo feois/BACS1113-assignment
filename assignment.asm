@@ -4,10 +4,14 @@ include irvine32.inc
 BUFFER_LENGTH = 255
 buffer db BUFFER_LENGTH + 1 dup (?)
 
+; constant used in str_to_float
 float_ten real4 10.0
-float_register dd 0
-float_result dd 0
+; variable used in str_to_float
 float_length dd 0
+; generic variable used to store float (in IEEE single-precision format) temporarily
+float_register dd 0
+; variable used to store float result (in IEEE single-precision format)
+float_result dd 0
 
 attempt_str db " more times", 0
 attempt_lock db "You have attempted too many times", 0
@@ -34,12 +38,12 @@ options dd offset option_loan, offset option_interest, offset option_debt, offse
 option_dialog db "Please select a valid option: ", 0
 
 loan_dialog db "Please enter the following values", 0
-loan_p_dialog db "Principal: ", 0
-loan_r_dialog db "Monthly interest rate: ", 0
+loan_p_dialog db "Principal: RM ", 0
+loan_r_dialog db "Monthly interest rate (in %): ", 0
 loan_n_dialog db "Number of payments: ", 0
-loan_principal real4 0.0
-loan_rate real4 0.0
-loan_payment real4 0.0
+loan_principal dd 0 ; float
+loan_rate dd 0 ; float
+loan_payment dd 0 ; int
 loan_emi_dialog db "Estimated Monthly Instalment: ", 0
 
 .code
@@ -190,18 +194,13 @@ loan:
 
     .if loan_principal == 0
         ; ask for principal
-        call read_to_buffer
-
-        ; try convert to float
-        lea esi, buffer
-        mov ecx, eax
-        call str_to_float
+        call readdec
         lea edx, option_loan
         jo jump_options
         mov loan_principal, eax
     .else
         mov eax, loan_principal
-        call print_float
+        call writedec
         call new_line
     .endif
 
@@ -219,6 +218,17 @@ loan:
         call str_to_float
         lea edx, option_loan
         jo jump_options
+
+        ; divide by 100
+        mov float_register, eax
+        fld float_register
+        fld float_ten
+        fld float_ten
+        fmul
+        fdiv
+        fstp float_register
+
+        mov eax, float_register
         mov loan_rate, eax
     .else
         mov eax, loan_rate
@@ -232,7 +242,7 @@ loan:
 
     .if loan_payment == 0
         ; ask for rate
-        call readint
+        call readdec
         lea edx, option_loan
         jo jump_options
         mov loan_payment, eax
@@ -264,7 +274,7 @@ loan:
     fld1
     fsub
     fxch
-    fld loan_principal
+    fild loan_principal
     fld loan_rate
     fmul
     fmul
@@ -279,6 +289,11 @@ loan:
     mov eax, float_result
     call print_float
     call new_line
+
+    ; reset data
+    mov loan_principal, 0
+    mov loan_rate, 0
+    mov loan_payment, 0
 
     ; wait input to return to menu
     call new_line
