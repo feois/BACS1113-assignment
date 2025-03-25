@@ -294,6 +294,9 @@ main_end:
     exit
 main endp
 
+; read string into the buffer
+; overwrite ecx, edx
+; set eax = length of string (not including 0)
 read_to_buffer proc
     lea edx, buffer
     mov ecx, BUFFER_LENGTH
