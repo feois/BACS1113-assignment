@@ -357,6 +357,7 @@ new_line endp
 ; set OF if string is invalid
 str_to_float proc
     mov float_length, ecx
+    ; index
     mov edx, 0
     ; f = 0
     fldz
@@ -389,6 +390,7 @@ decimal_loop:
     mov eax, float_register
     ret
 fraction:
+    ; set index to end of string
     mov edx, float_length
     dec ecx
 
