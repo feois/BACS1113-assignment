@@ -7,11 +7,9 @@ buffer db BUFFER_LENGTH + 1 dup (?)
 ; constant used in str_to_float
 float_ten real4 10.0
 ; variable used in str_to_float
-float_length dd 0
+float_length dd ?
 ; generic variable used to store float (in IEEE single-precision format) temporarily
-float_register dd 0
-; variable used to store float result (in IEEE single-precision format)
-float_result dd 0
+float_register dd ?
 
 attempt_str db " more times", 0
 attempt_lock db "You have attempted too many times", 0
@@ -44,7 +42,7 @@ loan_n_dialog db "Number of payments: ", 0
 loan_principal dd 0 ; float
 loan_rate dd 0 ; float
 loan_payment dd 0 ; int
-loan_emi_dialog db "Estimated Monthly Instalment: ", 0
+loan_emi_dialog db "Estimated Monthly Instalment: RM ", 0
 
 .code
 main proc
@@ -78,7 +76,7 @@ login_username:
         lea edx, attempt_lock
         call writestring
         call new_line
-        jmp main_end
+        exit
     .endif
 
     lea edx, wrong_username
@@ -119,7 +117,7 @@ login_password:
         lea edx, attempt_lock
         call writestring
         call new_line
-        jmp main_end
+        exit
     .endif
 
     lea edx, wrong_password
@@ -256,7 +254,7 @@ loan:
     fild loan_payment
     fld1
     fld loan_rate
-    fadd
+    fadd ; 1 + r
     ; code from https://www.madwizard.org/programming/snippets?id=36
     fyl2x
     fld1
@@ -272,21 +270,21 @@ loan:
 
     ; calculate EMI
     fld1
-    fsub
+    fsub ; (1+r)^n - 1
     fxch
     fild loan_principal
     fld loan_rate
-    fmul
-    fmul
+    fmul ; p * r
+    fmul ; p * r * (1+r)^n
     fxch
-    fdiv
-    fstp float_result
+    fdiv ; p * r * (1+r)^n / ((1+r)^n - 1)
+    fstp float_register
 
     ; print EMI
     call new_line
     lea edx, loan_emi_dialog
     call writestring
-    mov eax, float_result
+    mov eax, float_register
     call print_float
     call new_line
 
@@ -322,22 +320,24 @@ read_to_buffer endp
 ; compare string to buffer
 ; esi = string to be compared to
 ; ecx = number of bytes to compare
-; overwrite edi
+; overwrite eax, dx
 ; set flags same as cmp
 buffer_cmp proc
-    lea edi, buffer
+    ; index
+    mov eax, 0
 buffer_cmp_loop:
-    mov al, [esi]
-    mov ah, [edi]
-    cmp al, ah
+    mov dl, [esi + eax]
+    add eax, offset buffer
+    mov dh, [eax]
+    cmp dl, dh
     ; jump if different byte
     jne buffer_cmp_end
-    inc esi
-    inc edi
+    sub eax, offset buffer
+    inc eax
     loop buffer_cmp_loop
 buffer_cmp_end:
     ; set flags again
-    cmp al, ah
+    cmp dl, dh
     ret
 buffer_cmp endp
 
@@ -352,18 +352,18 @@ new_line endp
 ; convert string to float
 ; esi = string
 ; ecx = string length
-; overwrite edi
+; overwrite edx
 ; set eax = float
 ; set OF if string is invalid
 str_to_float proc
     mov float_length, ecx
-    mov edi, esi
+    mov edx, 0
     ; f = 0
     fldz
 decimal_loop:
     mov eax, 0
-    mov al, [edi]
-    inc edi
+    mov al, [esi + edx]
+    inc edx
 
     ; check if al is .
     cmp al, '.'
@@ -385,20 +385,19 @@ decimal_loop:
     loop decimal_loop
 
     ; eax = f
-    fstp float_result
-    mov eax, float_result
+    fstp float_register
+    mov eax, float_register
     ret
 fraction:
-    mov edi, esi
-    add edi, float_length
+    mov edx, float_length
     dec ecx
 
     ; g = 0
     fldz
 fraction_loop:
-    dec edi
+    dec edx
     mov eax, 0
-    mov al, [edi]
+    mov al, [esi + edx]
 
     ; check if al is 0-9
     cmp al, '0'
@@ -420,8 +419,8 @@ fraction_loop:
     fadd
 
     ; eax = f
-    fstp float_result
-    mov eax, float_result
+    fstp float_register
+    mov eax, float_register
     ret
 fraction_error:
     ; pop float
@@ -434,7 +433,7 @@ decimal_error:
     ret
 str_to_float endp
 
-; write float
+; print float always with 2 digit precision (e.g. 1234.56, 1000.00) except 0 (which is printed as 0)
 ; eax = float
 ; overwrite cl
 ; set OF if float is larger than 2^32
@@ -451,7 +450,7 @@ print_float proc
     and eax, 7F800000h
     shr eax, 23
     sub eax, 127
-    ; check if float > 2^32
+    ; check if float >= 2^32
     .if eax > 32
         ; set overflow flag
         sub al, 080h
@@ -477,6 +476,8 @@ print_float proc
     mov al, '.'
     call writechar
 
+    ; print fraction
+
     ; extract exponent
     mov eax, float_register
     and eax, 7F800000h
@@ -484,34 +485,33 @@ print_float proc
     sub eax, 127
     mov cl, al
 
-    ; extract mantissa
-    mov eax, float_register
-    and eax, 007FFFFFh
-    or eax, 00800000h
-
-    ; print fraction
     .if cl > 15
         mov eax, 0
     .else
         ; extract first 8 bits of mantissa
         neg cl
         add cl, 15
+        mov eax, float_register
+        and eax, 007FFFFFh
+        or eax, 00800000h
         shr eax, cl
         and eax, 000000FFh
     .endif
-    ; compute round(mantissa * 0.390625)
+
+    ; compute round(mantissa * 0.390625 or 100×2^-8)
     mov float_register, eax
     fild float_register
-    mov float_register, 390625
+    mov float_register, 390625 ; mantissa *= 390625
     fild float_register
     fmul
-    mov float_register, 1000000
+    mov float_register, 1000000 ; mantissa /= 1000000
     fild float_register
     fdiv
     fistp float_register
     mov eax, float_register
-    ; print an extra 0 before mantissa if not zero and less than ten
-    .if eax > 0 && eax < 10
+
+    ; print an extra 0 before mantissa if less than ten
+    .if eax < 10
         ; temporarily move eax (al because eax < 10) to ah first
         mov ah, al
         ; print zero
@@ -521,6 +521,8 @@ print_float proc
         mov al, ah
         mov ah, 0
     .endif
+
+    ; print mantissa
     call writedec
     ret
 print_float endp
