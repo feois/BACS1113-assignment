@@ -215,7 +215,7 @@ loan:
         mov ecx, eax
         call str_to_float
         lea edx, option_loan
-        jo jump_options
+        jc jump_options
 
         ; divide by 100
         mov float_register, eax
@@ -354,7 +354,7 @@ new_line endp
 ; ecx = string length
 ; overwrite edx
 ; set eax = float
-; set OF if string is invalid
+; set CF if string is invalid
 str_to_float proc
     mov float_length, ecx
     ; index
@@ -430,15 +430,14 @@ fraction_error:
 decimal_error:
     ; pop float
     fstp st
-    ; set overflow flag
-    sub al, 080h
+    stc
     ret
 str_to_float endp
 
 ; print float always with 2 digit precision (e.g. 1234.56, 1000.00) except 0 (which is printed as 0)
 ; eax = float
 ; overwrite cl
-; set OF if float is larger than 2^32
+; set CF if float is larger than 2^32
 print_float proc
     .if eax == 0
         mov al, '0'
@@ -454,8 +453,7 @@ print_float proc
     sub eax, 127
     ; check if float >= 2^32
     .if eax > 32
-        ; set overflow flag
-        sub al, 080h
+        stc
         ret
     .endif
     mov cl, al
