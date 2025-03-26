@@ -194,7 +194,7 @@ loan:
         ; ask for principal
         call readdec
         lea edx, option_loan
-        jo jump_options
+        jc jump_options
         mov loan_principal, eax
     .else
         mov eax, loan_principal
@@ -242,7 +242,7 @@ loan:
         ; ask for rate
         call readdec
         lea edx, option_loan
-        jo jump_options
+        jc jump_options
         mov loan_payment, eax
     .else
         mov eax, loan_payment
