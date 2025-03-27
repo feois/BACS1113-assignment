@@ -11,7 +11,7 @@ float_length dd ?
 ; generic variable used to store float (in IEEE single-precision format) temporarily
 float_register real4 ?
 
-system_logo db "System", 0
+system_logo db "Super Banking Calculator©2025", 0
 
 attempt_str db " more times", 0
 attempt_lock db "You have attempted too many times", 0
