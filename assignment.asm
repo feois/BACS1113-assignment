@@ -11,6 +11,8 @@ float_length dd ?
 ; generic variable used to store float (in IEEE single-precision format) temporarily
 float_register dd ?
 
+system_logo db "System", 0
+
 attempt_str db " more times", 0
 attempt_lock db "You have attempted too many times", 0
 
@@ -33,7 +35,7 @@ option_interest db "Compute compound interest", 0
 option_debt db "Compute Debt-to-Interest ratio", 0
 option_exit db "Exit", 0
 options dd offset option_loan, offset option_interest, offset option_debt, offset option_exit
-option_dialog db "Please select a valid option: ", 0
+option_dialog db "Please select a valid option (1-", '0' + lengthof options,"): ", 0
 
 loan_dialog db "Please enter the following values", 0
 loan_p_dialog db "Principal: RM ", 0
@@ -44,9 +46,11 @@ loan_rate dd 0 ; float
 loan_payment dd 0 ; int
 loan_emi_dialog db "Estimated Monthly Instalment: RM ", 0
 
+exit_dialog db "You have successfully log out", 0
+
 .code
 main proc
-    call clrscr
+    call clear
 login_username:
     ; print dialog
     lea edx, login_dialog
@@ -68,7 +72,7 @@ login_username:
     .endif
     
     ; wrong username
-    call clrscr
+    call clear
 
     ; check attempts
     dec username_attempt
@@ -108,12 +112,12 @@ login_password:
     .endif
     
     ; wrong password
-    call clrscr
+    call clear
 
     ; check attempts
     dec password_attempt
     .if password_attempt == 0
-        call clrscr
+        call clear
         lea edx, attempt_lock
         call writestring
         call new_line
@@ -129,7 +133,7 @@ login_password:
     call new_line
     jmp login_password
 menu:
-    call clrscr
+    call clear
 
     ; print dialog
     lea edx, menu_dialog
@@ -168,7 +172,7 @@ menu_loop:
     jnc menu
     mov edx, [options + eax * 4]
 jump_options:
-    call clrscr
+    call clear
     call writestring
     call new_line
     call new_line
@@ -303,9 +307,25 @@ loan:
 interest:
 debt:
 main_end:
-    call clrscr
+    call clear
+    lea edx, exit_dialog
+    call writestring
+    call new_line
     exit
 main endp
+
+; clear screen and print logo
+; overwrite eax
+clear proc
+    call clrscr
+    mov eax, edx
+    lea edx, system_logo
+    call writestring
+    mov edx, eax
+    call new_line
+    call new_line
+    ret
+clear endp
 
 ; read string into the buffer
 ; overwrite ecx, edx
