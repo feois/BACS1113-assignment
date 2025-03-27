@@ -48,6 +48,22 @@ loan_emi_dialog db "Estimated Monthly Instalment: RM ", 0
 
 exit_dialog db "You have successfully log out", 0
 
+;HOCHEEHIN
+debt_dialog db "Compute Debt-to-Income Ratio", 0
+debt_total_dialog db "Total monthly debt payment: RM", 0
+income_dialog db "Gross monthly income: RM", 0
+dti_result_dialog db "Debt-to-Income Ratio: ", 0
+dti_approve       db "Loan approved (DTI <= 36%)", 0
+dti_reject        db "Loan rejected (DTI > 36%)", 0
+dti_threshold     real4 36.0
+debt_total        real4 0.0
+income_gross      real4 0.0
+
+dti_input_error   db "Invalid input! Please enter a number.", 0
+dti_attempt_lock  db "Too many invalid attempts. Returning to menu.", 0
+dti_attempt_max   dd 3
+dti_attempt_count dd 0
+
 .code
 main proc
     call clear
@@ -55,7 +71,7 @@ login_username:
     ; print dialog
     lea edx, login_dialog
     call writestring
-    
+
     ; read username
     call read_to_buffer
 
@@ -70,7 +86,7 @@ login_username:
         ; username correct
         je login_password
     .endif
-    
+
     ; wrong username
     call clear
 
@@ -95,10 +111,10 @@ login_password:
     ; print dialog
     lea edx, password_dialog
     call writestring
-    
+
     ; read password
     call read_to_buffer
-    
+
     .if eax == 0
         ; empty input
         jmp main_end
@@ -110,7 +126,7 @@ login_password:
         ; password correct
         je menu
     .endif
-    
+
     ; wrong password
     call clear
 
@@ -305,12 +321,113 @@ loan:
     call read_to_buffer
     jmp menu
 interest:
+
+;HOCHEEHIN
 debt:
-main_end:
     call clear
-    lea edx, exit_dialog
+    mov dti_attempt_count, 3
+
+input_debt:
+    cmp dti_attempt_count, 0
+    jle too_many_attempts
+
+    lea edx, debt_total_dialog
+    call writestring
+    call read_to_buffer
+    lea esi, buffer
+    mov ecx, eax
+    call str_to_float
+    jc invalid_input_debt
+
+    fldz
+    fcomp
+    fstsw ax
+    sahf
+    je invalid_input_debt
+
+    fstp debt_total
+    jmp input_income
+
+invalid_input_debt:
+    dec dti_attempt_count
+    lea edx, dti_input_error
     call writestring
     call new_line
+    jmp input_debt
+
+input_income:
+    cmp dti_attempt_count, 0
+    jle too_many_attempts
+
+    lea edx, income_dialog
+    call writestring
+    call read_to_buffer
+    lea esi, buffer
+    mov ecx, eax
+    call str_to_float
+    jc input_income
+    fstp income_gross
+
+    fld income_gross
+    ftst
+    fstsw ax
+    sahf
+    jz division_error
+
+    fld debt_total
+    fdiv income_gross
+    fmul float_ten
+    fmul float_ten
+    fstp float_register
+
+    call new_line
+    lea edx, dti_result_dialog
+    call writestring
+    mov eax, float_register
+    call print_float
+    mov al, '%'
+    call writechar
+    call new_line
+
+    fld float_register
+    fcomp dti_threshold
+    fstsw ax
+    sahf
+    jbe approved
+    lea edx, dti_reject
+    jmp print_decision
+approved:
+    lea edx, dti_approve
+print_decision:
+    call writestring
+    call new_line
+
+    lea edx, wait_dialog
+    call writestring
+    call read_to_buffer
+    jmp menu
+
+invalid_input_income:
+    dec dti_attempt_count
+    lea edx, dti_input_error
+    call writestring
+    call new_line
+    jmp input_income
+
+too_many_attempts:
+    lea edx, dti_attempt_lock
+    call writestring
+    call new_line
+    jmp menu
+
+division_error:
+    lea edx, dti_input_error
+    call writestring
+    call new_line
+    jmp input_income
+
+main_end:
+    call clear
     exit
 main endp
 
@@ -518,7 +635,7 @@ print_float proc
         and eax, 000000FFh
     .endif
 
-    ; compute round(mantissa * 0.390625 or 100Ã—2^-8)
+    ; compute round(mantissa * 0.390625 or 100×2^-8)
     mov float_register, eax
     fild float_register
     mov float_register, 390625 ; mantissa *= 390625
