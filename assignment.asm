@@ -35,7 +35,7 @@ option_interest db "Compute compound interest", 0
 option_debt db "Compute Debt-to-Interest ratio", 0
 option_exit db "Exit", 0
 options dd offset option_loan, offset option_interest, offset option_debt, offset option_exit
-option_dialog db "Please select a valid option (1-", '0' + lengthof options,"): ", 0
+option_dialog db "Please select a valid option (1-", '0' + lengthof options, "): ", 0
 
 loan_dialog db "Please enter the following values", 0
 loan_p_dialog db "Principal: RM ", 0
