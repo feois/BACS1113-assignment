@@ -95,7 +95,7 @@ login_username:
     .if username_attempt == 0
         lea edx, attempt_lock
         call writestring
-        call new_line
+        call crlf
         exit
     .endif
 
@@ -105,7 +105,7 @@ login_username:
     call writedec
     lea edx, attempt_str
     call writestring
-    call new_line
+    call crlf
     jmp login_username
 login_password:
     ; print dialog
@@ -136,7 +136,7 @@ login_password:
         call clear
         lea edx, attempt_lock
         call writestring
-        call new_line
+        call crlf
         exit
     .endif
 
@@ -146,7 +146,7 @@ login_password:
     call writedec
     lea edx, attempt_str
     call writestring
-    call new_line
+    call crlf
     jmp login_password
 menu:
     call clear
@@ -154,7 +154,7 @@ menu:
     ; print dialog
     lea edx, menu_dialog
     call writestring
-    call new_line
+    call crlf
     mov ecx, lengthof options
 menu_loop:
     ; print all options
@@ -168,11 +168,11 @@ menu_loop:
     mov al, ' '
     call writechar
     call writestring
-    call new_line
+    call crlf
     loop menu_loop
 
     ; ask for option selection
-    call new_line
+    call crlf
     lea edx, option_dialog
     call writestring
 
@@ -190,8 +190,8 @@ menu_loop:
 jump_options:
     call clear
     call writestring
-    call new_line
-    call new_line
+    call crlf
+    call crlf
     ; jump to function page
     cmp edx, offset option_loan
     je loan
@@ -204,7 +204,7 @@ jump_options:
 loan:
     lea edx, loan_dialog
     call writestring
-    call new_line
+    call crlf
 
     ; print principal dialog
     lea edx, loan_p_dialog
@@ -220,7 +220,7 @@ loan:
     .else
         mov eax, loan_principal
         call writedec
-        call new_line
+        call crlf
     .endif
 
     ; print rate dialog
@@ -252,7 +252,7 @@ loan:
     .else
         mov eax, loan_rate
         call print_float
-        call new_line
+        call crlf
     .endif
 
     ; print payment dialog
@@ -269,7 +269,7 @@ loan:
     .else
         mov eax, loan_payment
         call writedec
-        call new_line
+        call crlf
     .endif
 
     ; calculate (1+r)^n
@@ -300,12 +300,12 @@ loan:
     fstp float_register
 
     ; print EMI
-    call new_line
+    call crlf
     lea edx, loan_emi_dialog
     call writestring
     mov eax, float_register
     call print_float
-    call new_line
+    call crlf
 
     ; reset data
     mov loan_principal, 0
@@ -346,7 +346,7 @@ invalid_input_debt:
     dec dti_attempt_count
     lea edx, dti_input_error
     call writestring
-    call new_line
+    call crlf
     jmp input_debt
 
 input_income:
@@ -374,14 +374,14 @@ input_income:
     fmul float_ten
     fst float_register
 
-    call new_line
+    call crlf
     lea edx, dti_result_dialog
     call writestring
     mov eax, float_register
     call print_float
     mov al, '%'
     call writechar
-    call new_line
+    call crlf
 
     fld dti_threshold
     fxch
@@ -394,32 +394,32 @@ approved:
     lea edx, dti_approve
 print_decision:
     call writestring
-    call new_line
+    call crlf
     jmp wait_input
 
 invalid_input_income:
     dec dti_attempt_count
     lea edx, dti_input_error
     call writestring
-    call new_line
+    call crlf
     jmp input_income
 
 too_many_attempts:
     lea edx, dti_attempt_lock
     call writestring
-    call new_line
+    call crlf
     jmp menu
 
 division_error:
     lea edx, dti_input_error
     call writestring
-    call new_line
+    call crlf
     jmp input_income
 wait_input:
-    call new_line
+    call crlf
     lea edx, wait_dialog
     call writestring
-    call new_line
+    call crlf
     call read_to_buffer
     jmp menu
 main_end:
@@ -427,7 +427,7 @@ main_end:
 
     lea edx, exit_dialog
     call writestring
-    call new_line
+    call crlf
 
     exit
 main endp
@@ -440,8 +440,8 @@ clear proc
     lea edx, system_logo
     call writestring
     mov edx, eax
-    call new_line
-    call new_line
+    call crlf
+    call crlf
     ret
 clear endp
 
@@ -478,14 +478,6 @@ buffer_cmp_end:
     cmp dl, dh
     ret
 buffer_cmp endp
-
-; print new line
-; overwrite al
-new_line proc
-    mov al, 10
-    call writechar
-    ret
-new_line endp
 
 ; convert string to float
 ; esi = string
