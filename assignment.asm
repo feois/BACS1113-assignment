@@ -9,7 +9,7 @@ float_ten real4 10.0
 ; variable used in str_to_float
 float_length dd ?
 ; generic variable used to store float (in IEEE single-precision format) temporarily
-float_register dd ?
+float_register real4 ?
 
 system_logo db "System", 0
 
@@ -41,17 +41,17 @@ loan_dialog db "Please enter the following values", 0
 loan_p_dialog db "Principal: RM ", 0
 loan_r_dialog db "Monthly interest rate (in %): ", 0
 loan_n_dialog db "Number of payments: ", 0
-loan_principal dd 0 ; float
-loan_rate dd 0 ; float
-loan_payment dd 0 ; int
+loan_principal dd 0
+loan_rate real4 0.0
+loan_payment dd 0
 loan_emi_dialog db "Estimated Monthly Instalment: RM ", 0
 
-exit_dialog db "You have successfully log out", 0
+exit_dialog db "Thank you for using this application", 0
 
 ;HOCHEEHIN
 debt_dialog db "Compute Debt-to-Income Ratio", 0
-debt_total_dialog db "Total monthly debt payment: RM", 0
-income_dialog db "Gross monthly income: RM", 0
+debt_total_dialog db "Total monthly debt payment: RM ", 0
+income_dialog db "Gross monthly income: RM ", 0
 dti_result_dialog db "Debt-to-Income Ratio: ", 0
 dti_approve       db "Loan approved (DTI <= 36%)", 0
 dti_reject        db "Loan rejected (DTI > 36%)", 0
@@ -62,7 +62,7 @@ income_gross      real4 0.0
 dti_input_error   db "Invalid input! Please enter a number.", 0
 dti_attempt_lock  db "Too many invalid attempts. Returning to menu.", 0
 dti_attempt_max   dd 3
-dti_attempt_count dd 0
+dti_attempt_count dd ?
 
 .code
 main proc
@@ -213,8 +213,9 @@ loan:
     .if loan_principal == 0
         ; ask for principal
         call readdec
+        cmp eax, 0
         lea edx, option_loan
-        jc jump_options
+        je jump_options
         mov loan_principal, eax
     .else
         mov eax, loan_principal
@@ -261,8 +262,9 @@ loan:
     .if loan_payment == 0
         ; ask for rate
         call readdec
+        cmp eax, 0
         lea edx, option_loan
-        jc jump_options
+        je jump_options
         mov loan_payment, eax
     .else
         mov eax, loan_payment
@@ -273,8 +275,7 @@ loan:
     ; calculate (1+r)^n
     fild loan_payment
     fld1
-    fld loan_rate
-    fadd ; 1 + r
+    fadd loan_rate ; 1 + r
     ; code from https://www.madwizard.org/programming/snippets?id=36
     fyl2x
     fld1
@@ -292,10 +293,8 @@ loan:
     fld1
     fsub ; (1+r)^n - 1
     fxch
-    fild loan_principal
-    fld loan_rate
-    fmul ; p * r
-    fmul ; p * r * (1+r)^n
+    fimul loan_principal ; p * (1+r)^n
+    fmul loan_rate ; p * r * (1+r)^n
     fxch
     fdiv ; p * r * (1+r)^n / ((1+r)^n - 1)
     fstp float_register
@@ -313,19 +312,13 @@ loan:
     mov loan_rate, 0
     mov loan_payment, 0
 
-    ; wait input to return to menu
-    call new_line
-    lea edx, wait_dialog
-    call writestring
-    call new_line
-    call read_to_buffer
-    jmp menu
+    jmp wait_input
 interest:
 
 ;HOCHEEHIN
 debt:
-    call clear
-    mov dti_attempt_count, 3
+    mov eax, dti_attempt_max
+    mov dti_attempt_count, eax
 
 input_debt:
     cmp dti_attempt_count, 0
@@ -339,13 +332,14 @@ input_debt:
     call str_to_float
     jc invalid_input_debt
 
+    mov debt_total, eax
+
+    fld debt_total
     fldz
-    fcomp
-    fstsw ax
-    sahf
+    fcomip st, st(1)
+    fstp st
     je invalid_input_debt
 
-    fstp debt_total
     jmp input_income
 
 invalid_input_debt:
@@ -366,19 +360,19 @@ input_income:
     mov ecx, eax
     call str_to_float
     jc input_income
-    fstp income_gross
+    mov income_gross, eax
 
     fld income_gross
-    ftst
-    fstsw ax
-    sahf
-    jz division_error
+    fldz
+    fcomip st, st(1)
+    fstp st
+    je division_error
 
     fld debt_total
     fdiv income_gross
     fmul float_ten
     fmul float_ten
-    fstp float_register
+    fst float_register
 
     call new_line
     lea edx, dti_result_dialog
@@ -389,10 +383,10 @@ input_income:
     call writechar
     call new_line
 
-    fld float_register
-    fcomp dti_threshold
-    fstsw ax
-    sahf
+    fld dti_threshold
+    fxch
+    fcomip st, st(1)
+    fstp st
     jbe approved
     lea edx, dti_reject
     jmp print_decision
@@ -401,11 +395,7 @@ approved:
 print_decision:
     call writestring
     call new_line
-
-    lea edx, wait_dialog
-    call writestring
-    call read_to_buffer
-    jmp menu
+    jmp wait_input
 
 invalid_input_income:
     dec dti_attempt_count
@@ -425,9 +415,20 @@ division_error:
     call writestring
     call new_line
     jmp input_income
-
+wait_input:
+    call new_line
+    lea edx, wait_dialog
+    call writestring
+    call new_line
+    call read_to_buffer
+    jmp menu
 main_end:
     call clear
+
+    lea edx, exit_dialog
+    call writestring
+    call new_line
+
     exit
 main endp
 
@@ -587,12 +588,12 @@ print_float proc
     ; extract exponent
     and eax, 7F800000h
     shr eax, 23
-    sub eax, 127
+    sub al, 127
+
     ; check if float >= 2^32
-    .if eax > 32
-        stc
-        ret
-    .endif
+    cmp al, 32
+    jg print_float_error
+
     mov cl, al
 
     ; extract mantissa
@@ -600,15 +601,17 @@ print_float proc
     and eax, 007FFFFFh
     or eax, 00800000h
 
-    ; print integer
-    .if cl < 24
-        neg cl
-        add cl, 23
-        shr eax, cl
-    .else
-        sub cl, 23
-        shl eax, cl
-    .endif
+    cmp cl, 24
+    jge float_is_integer
+    ; float is decimal
+    neg cl
+    add cl, 23
+    shr eax, cl
+    jmp print_float_integer
+float_is_integer:
+    sub cl, 23
+    shl eax, cl
+print_float_integer:
     call writedec
     mov al, '.'
     call writechar
@@ -619,21 +622,21 @@ print_float proc
     mov eax, float_register
     and eax, 7F800000h
     shr eax, 23
-    sub eax, 127
+    sub al, 127
     mov cl, al
+    mov eax, 0
 
-    .if cl > 15
-        mov eax, 0
-    .else
-        ; extract first 8 bits of mantissa
-        neg cl
-        add cl, 15
-        mov eax, float_register
-        and eax, 007FFFFFh
-        or eax, 00800000h
-        shr eax, cl
-        and eax, 000000FFh
-    .endif
+    cmp cl, 15
+    jg print_float_exponent
+
+    ; extract first 8 bits of mantissa
+    neg cl
+    add cl, 15
+    mov eax, float_register
+    and eax, 007FFFFFh
+    or eax, 00800000h
+    shr eax, cl
+    and eax, 000000FFh
 
     ; compute round(mantissa * 0.390625 or 100×2^-8)
     mov float_register, eax
@@ -646,7 +649,7 @@ print_float proc
     fdiv
     fistp float_register
     mov eax, float_register
-
+print_float_exponent:
     ; print an extra 0 before mantissa if less than ten
     .if eax < 10
         ; temporarily move eax (al because eax < 10) to ah first
@@ -661,6 +664,9 @@ print_float proc
 
     ; print mantissa
     call writedec
+    ret
+print_float_error:
+    stc
     ret
 print_float endp
 
