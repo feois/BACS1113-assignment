@@ -516,13 +516,18 @@ decimal_error:
     ret
 str_to_float endp
 
-; print float always with 2 digit precision (e.g. 1234.56, 1000.00) except 0 (which is printed as 0)
+; print float always with 2 digit precision (e.g. 1234.56, 1000.01)
 ; eax = float
 ; overwrite eax, cl
 ; set CF if float is larger than 2^32
 print_float proc
     .if eax == 0
         mov al, '0'
+        call writechar
+        mov al, '.'
+        call writechar
+        mov al, '0'
+        call writechar
         call writechar
         ret
     .endif
