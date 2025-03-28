@@ -4,10 +4,8 @@ include irvine32.inc
 BUFFER_LENGTH = 255
 buffer db BUFFER_LENGTH + 1 dup (?)
 
-; constant used in str_to_float
+; constant
 float_ten real4 10.0
-; variable used in str_to_float
-float_length dd ?
 ; generic variable used to store float (in IEEE single-precision format) temporarily
 float_register real4 ?
 
@@ -36,6 +34,7 @@ option_debt db "Compute Debt-to-Interest ratio", 0
 option_exit db "Exit", 0
 options dd offset option_loan, offset option_interest, offset option_debt, offset option_exit
 option_dialog db "Please select a valid option (1-", '0' + lengthof options, "): ", 0
+selected_option dd ?
 
 loan_dialog db "Please enter the following values", 0
 loan_p_dialog db "Principal: RM ", 0
@@ -56,13 +55,8 @@ dti_result_dialog db "Debt-to-Income Ratio: ", 0
 dti_approve       db "Loan approved (DTI <= 36%)", 0
 dti_reject        db "Loan rejected (DTI > 36%)", 0
 dti_threshold     real4 36.0
-debt_total        real4 0.0
-income_gross      real4 0.0
-
-dti_input_error   db "Invalid input! Please enter a number.", 0
-dti_attempt_lock  db "Too many invalid attempts. Returning to menu.", 0
-dti_attempt_max   dd 3
-dti_attempt_count dd ?
+debt_total        dd 0.0
+income_gross      dd 0.0
 
 .code
 main proc
@@ -80,7 +74,7 @@ login_username:
         jmp main_end
     .elseif eax == sizeof username
         ; check username
-        lea esi, username
+        lea edx, username
         mov ecx, eax
         call buffer_cmp
         ; username correct
@@ -120,7 +114,7 @@ login_password:
         jmp main_end
     .elseif sizeof password
         ; check password
-        lea esi, password
+        lea edx, password
         mov ecx, eax
         call buffer_cmp
         ; password correct
@@ -156,12 +150,12 @@ menu:
     call writestring
     call crlf
     mov ecx, lengthof options
+    mov esi, 0
 menu_loop:
     ; print all options
-    mov eax, lengthof options
-    sub eax, ecx
-    mov edx, [options + eax * 4]
-    inc eax
+    mov edx, [options + esi * 4]
+    inc esi
+    mov eax, esi
     call writedec
     mov al, ')'
     call writechar
@@ -181,14 +175,16 @@ menu_loop:
 
     ; check for invalid input
     jc menu
-    cmp eax, 0
-    je menu
+    test eax, eax
+    jz menu
     dec eax
     cmp eax, lengthof options
-    jnc menu
-    mov edx, [options + eax * 4]
+    jae menu
+    mov eax, [options + eax * 4]
+    mov selected_option, eax
 jump_options:
     call clear
+    mov edx, selected_option
     call writestring
     call crlf
     call crlf
@@ -213,15 +209,13 @@ loan:
     .if loan_principal == 0
         ; ask for principal
         call readdec
-        cmp eax, 0
-        lea edx, option_loan
-        je jump_options
         mov loan_principal, eax
-    .else
-        mov eax, loan_principal
-        call writedec
-        call crlf
+        jmp jump_options
     .endif
+
+    mov eax, loan_principal
+    call writedec
+    call crlf
 
     ; print rate dialog
     lea edx, loan_r_dialog
@@ -232,28 +226,19 @@ loan:
         call read_to_buffer
 
         ; try convert to float
-        lea esi, buffer
+        lea edx, buffer
         mov ecx, eax
         call str_to_float
-        lea edx, option_loan
         jc jump_options
-
-        ; divide by 100
-        mov float_register, eax
-        fld float_register
-        fld float_ten
-        fld float_ten
-        fmul
-        fdiv
-        fstp float_register
-
-        mov eax, float_register
         mov loan_rate, eax
-    .else
-        mov eax, loan_rate
-        call print_float
-        call crlf
+        jmp jump_options
     .endif
+
+    mov eax, loan_rate
+    call print_float
+    mov al, '%'
+    call writechar
+    call crlf
 
     ; print payment dialog
     lea edx, loan_n_dialog
@@ -262,20 +247,22 @@ loan:
     .if loan_payment == 0
         ; ask for rate
         call readdec
-        cmp eax, 0
-        lea edx, option_loan
-        je jump_options
         mov loan_payment, eax
-    .else
-        mov eax, loan_payment
-        call writedec
-        call crlf
+        jmp jump_options
     .endif
 
+    mov eax, loan_payment
+    call writedec
+    call crlf
+
+    fld loan_rate
+    fld float_ten
+    fmul float_ten
+    fdiv
     ; calculate (1+r)^n
     fild loan_payment
     fld1
-    fadd loan_rate ; 1 + r
+    fadd st, st(2) ; 1 + r
     ; code from https://www.madwizard.org/programming/snippets?id=36
     fyl2x
     fld1
@@ -287,14 +274,15 @@ loan:
     fxch
     fstp st
     ; duplicate float
-    fld st(0)
+    fxch
+    fld st(1)
 
     ; calculate EMI
     fld1
     fsub ; (1+r)^n - 1
-    fxch
+    fxch st(2)
     fimul loan_principal ; p * (1+r)^n
-    fmul loan_rate ; p * r * (1+r)^n
+    fmul ; p * r * (1+r)^n
     fxch
     fdiv ; p * r * (1+r)^n / ((1+r)^n - 1)
     fstp float_register
@@ -317,56 +305,31 @@ interest:
 
 ;HOCHEEHIN
 debt:
-    mov eax, dti_attempt_max
-    mov dti_attempt_count, eax
-
-input_debt:
-    cmp dti_attempt_count, 0
-    jle too_many_attempts
-
     lea edx, debt_total_dialog
     call writestring
-    call read_to_buffer
-    lea esi, buffer
-    mov ecx, eax
-    call str_to_float
-    jc invalid_input_debt
 
-    mov debt_total, eax
+    .if debt_total == 0
+        call readdec
+        mov debt_total, eax
+        jmp jump_options
+    .endif
 
-    fld debt_total
-    fldz
-    fcomip st, st(1)
-    fstp st
-    je invalid_input_debt
-
-    jmp input_income
-
-invalid_input_debt:
-    dec dti_attempt_count
-    lea edx, dti_input_error
-    call writestring
+    mov eax, debt_total
+    call writedec
     call crlf
-    jmp input_debt
-
-input_income:
-    cmp dti_attempt_count, 0
-    jle too_many_attempts
 
     lea edx, income_dialog
     call writestring
-    call read_to_buffer
-    lea esi, buffer
-    mov ecx, eax
-    call str_to_float
-    jc input_income
-    mov income_gross, eax
 
-    fld income_gross
-    fldz
-    fcomip st, st(1)
-    fstp st
-    je division_error
+    .if income_gross == 0
+        call readdec
+        mov income_gross, eax
+        jmp jump_options
+    .endif
+
+    mov eax, income_gross
+    call writedec
+    call crlf
 
     fld debt_total
     fdiv income_gross
@@ -387,34 +350,17 @@ input_income:
     fxch
     fcomip st, st(1)
     fstp st
-    jbe approved
+    jbe loan_approved
     lea edx, dti_reject
-    jmp print_decision
-approved:
+    jmp print_loan_decision
+loan_approved:
     lea edx, dti_approve
-print_decision:
+print_loan_decision:
     call writestring
     call crlf
-    jmp wait_input
 
-invalid_input_income:
-    dec dti_attempt_count
-    lea edx, dti_input_error
-    call writestring
-    call crlf
-    jmp input_income
-
-too_many_attempts:
-    lea edx, dti_attempt_lock
-    call writestring
-    call crlf
-    jmp menu
-
-division_error:
-    lea edx, dti_input_error
-    call writestring
-    call crlf
-    jmp input_income
+    mov debt_total, 0
+    mov income_gross, 0
 wait_input:
     call crlf
     lea edx, wait_dialog
@@ -456,45 +402,45 @@ read_to_buffer proc
 read_to_buffer endp
 
 ; compare string to buffer
-; esi = string to be compared to
+; edx = offset of the string to be compared to
 ; ecx = number of bytes to compare
-; overwrite eax, dx
+; overwrite ax, ecx
 ; set flags same as cmp
 buffer_cmp proc
-    ; index
-    mov eax, 0
+    push esi
+    mov esi, 0
 buffer_cmp_loop:
-    mov dl, [esi + eax]
-    add eax, offset buffer
-    mov dh, [eax]
-    cmp dl, dh
+    mov al, [edx + esi]
+    mov ah, [buffer + esi]
+    cmp al, ah
     ; jump if different byte
     jne buffer_cmp_end
-    sub eax, offset buffer
-    inc eax
+    inc esi
     loop buffer_cmp_loop
 buffer_cmp_end:
     ; set flags again
-    cmp dl, dh
+    cmp al, ah
+    pop esi
     ret
 buffer_cmp endp
 
 ; convert string to float
-; esi = string
+; edx = string offset
 ; ecx = string length
-; overwrite edx
+; overwrite ecx
 ; set eax = float
 ; set CF if string is invalid
 str_to_float proc
-    mov float_length, ecx
+    push esi
+    push ecx
     ; index
-    mov edx, 0
+    mov esi, 0
     ; f = 0
     fldz
 decimal_loop:
     mov eax, 0
-    mov al, [esi + edx]
-    inc edx
+    mov al, [edx + esi]
+    inc esi
 
     ; check if al is .
     cmp al, '.'
@@ -518,18 +464,20 @@ decimal_loop:
     ; eax = f
     fstp float_register
     mov eax, float_register
+    pop ecx
+    pop esi
     ret
 fraction:
     ; set index to end of string
-    mov edx, float_length
+    pop esi
     dec ecx
 
     ; g = 0
     fldz
 fraction_loop:
-    dec edx
+    dec esi
     mov eax, 0
-    mov al, [esi + edx]
+    mov al, [edx + esi]
 
     ; check if al is 0-9
     cmp al, '0'
@@ -553,20 +501,24 @@ fraction_loop:
     ; eax = f
     fstp float_register
     mov eax, float_register
+    pop esi
     ret
 fraction_error:
     ; pop float
     fstp st
+    push ecx
 decimal_error:
     ; pop float
     fstp st
     stc
+    pop ecx
+    pop esi
     ret
 str_to_float endp
 
 ; print float always with 2 digit precision (e.g. 1234.56, 1000.00) except 0 (which is printed as 0)
 ; eax = float
-; overwrite cl
+; overwrite eax, cl
 ; set CF if float is larger than 2^32
 print_float proc
     .if eax == 0
@@ -634,11 +586,9 @@ print_float_integer:
     mov float_register, eax
     fild float_register
     mov float_register, 390625 ; mantissa *= 390625
-    fild float_register
-    fmul
+    fimul float_register
     mov float_register, 1000000 ; mantissa /= 1000000
-    fild float_register
-    fdiv
+    fidiv float_register
     fistp float_register
     mov eax, float_register
 print_float_exponent:
