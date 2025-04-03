@@ -1,5 +1,8 @@
 include irvine32.inc
 .data
+datetime systemtime <>
+month_str db "JanFebMarAprMayJunJulAugSepOctNovDec"
+
 ; string buffer
 BUFFER_LENGTH = 255
 buffer db BUFFER_LENGTH + 1 dup (?)
@@ -10,7 +13,7 @@ float_hundred real4 100.0
 ; generic variable used to store float (in IEEE single-precision format) temporarily
 float_register real4 ?
 
-system_logo db "Super Banking Calculator©2025", 0
+system_logo db "Super Banking Calculator", 9, 0
 
 attempt_str db " more times", 0
 attempt_lock db "You have attempted too many times", 0
@@ -497,16 +500,62 @@ main_end:
     exit
 main endp
 
-; clear screen and print logo
-; overwrite eax
+; clear screen and print logo and time
 clear proc
+    push eax
+    push edx
+    mov eax, 0
     call clrscr
-    mov eax, edx
+    ; print logo
     lea edx, system_logo
     call writestring
-    mov edx, eax
+    ; get time
+    lea edx, datetime
+    push edx
+    call getlocaltime
+    ; print month
+    mov dx, datetime.wmonth
+    mov ax, dx
+    add ax, dx
+    add ax, dx
+    lea edx, month_str
+    lea edx, [edx + eax - 3]
+    mov al, [edx]
+    call writechar
+    mov al, [edx + 1]
+    call writechar
+    mov al, [edx + 2]
+    call writechar
+    mov al, ' '
+    call writechar
+    ; print day
+    mov ax, datetime.wday
+    call writedec
+    mov al, ' '
+    call writechar
+    ; print year
+    mov ax, datetime.wyear
+    call writedec
+    mov al, 9
+    call writechar
+    ; print hour
+    mov ax, datetime.whour
+    call print_double_digits
+    mov al, ':'
+    call writechar
+    ; print minute
+    mov ax, datetime.wminute
+    call print_double_digits
+    mov al, ':'
+    call writechar
+    ; print second
+    mov ax, datetime.wsecond
+    call print_double_digits
+
     call crlf
     call crlf
+    pop edx
+    pop eax
     ret
 clear endp
 
@@ -542,6 +591,20 @@ buffer_cmp_end:
     pop esi
     ret
 buffer_cmp endp
+
+; print integer with double digits (add 0 to integer less than 10)
+; eax = integer
+print_double_digits proc
+    .if eax < 10
+        mov ah, al
+        mov al, '0'
+        call writechar
+        mov al, ah
+        mov ah, 0
+    .endif
+
+    call writedec
+print_double_digits endp
 
 ; convert string to float
 ; edx = string offset
@@ -723,20 +786,7 @@ print_float_integer:
     fistp float_register
     mov eax, float_register
 print_float_exponent:
-    ; print an extra 0 before mantissa if less than ten
-    .if eax < 10
-        ; temporarily move eax (al because eax < 10) to ah first
-        mov ah, al
-        ; print zero
-        mov al, '0'
-        call writechar
-        ; move ah back to eax
-        mov al, ah
-        mov ah, 0
-    .endif
-
-    ; print mantissa
-    call writedec
+    call print_double_digits
     ret
 print_float_error:
     stc
