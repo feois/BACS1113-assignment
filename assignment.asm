@@ -1,4 +1,5 @@
 include irvine32.inc
+
 .data
 datetime systemtime <>
 month_str db "JanFebMarAprMayJunJulAugSepOctNovDec"
@@ -6,6 +7,12 @@ month_str db "JanFebMarAprMayJunJulAugSepOctNovDec"
 ; string buffer
 BUFFER_LENGTH = 255
 buffer db BUFFER_LENGTH + 1 dup (?)
+
+bufferedfile struct
+    bf_handle dword ?
+    bf_buffer byte BUFFER_LENGTH dup (?)
+    bf_len byte 0
+bufferedfile ends
 
 ; constant
 float_ten real4 10.0
@@ -72,6 +79,9 @@ dti_threshold     real4 36.0
 debt_total        dd 0.0
 income_gross      dd 0.0
 
+filenametest db "testdata", 0
+filetest bufferedfile <?>
+
 .code
 main proc
     call clear
@@ -83,13 +93,12 @@ login_username:
     ; read username
     call read_to_buffer
 
-    .if eax == 0
+    .if ecx == 0
         ; empty input
         jmp main_end
-    .elseif eax == sizeof username
+    .elseif ecx == sizeof username
         ; check username
         lea edx, username
-        mov ecx, eax
         call buffer_cmp
         ; username correct
         je login_password
@@ -123,13 +132,12 @@ login_password:
     ; read password
     call read_to_buffer
 
-    .if eax == 0
+    .if ecx == 0
         ; empty input
         jmp main_end
     .elseif sizeof password
         ; check password
         lea edx, password
-        mov ecx, eax
         call buffer_cmp
         ; password correct
         je menu
@@ -241,7 +249,6 @@ loan:
 
         ; try convert to float
         lea edx, buffer
-        mov ecx, eax
         call str_to_float
         jc option_selected
         mov loan_r, eax
@@ -337,7 +344,6 @@ interest:
     .if interest_r == 0
         call read_to_buffer
         lea edx, buffer
-        mov ecx, eax
         call str_to_float
         jc option_selected
         mov interest_r, eax
@@ -354,7 +360,6 @@ interest:
     .if interest_n == 0
         call read_to_buffer
         lea edx, buffer
-        mov ecx, eax
         call str_to_float
         jc option_selected
         mov interest_n, eax
@@ -371,7 +376,6 @@ interest:
     .if interest_t == 0
         call read_to_buffer
         lea edx, buffer
-        mov ecx, eax
         call str_to_float
         jc option_selected
         mov interest_t, eax
@@ -559,35 +563,126 @@ clear proc
     ret
 clear endp
 
+; read line (string ends with char 10) to a buffer from a bufferedfile
+; edx = offset of bufferedfile
+; overwrite ecx
+; set eax = number of characters read
+; set CF if buffer[eax - 1] is not char 10 (file does not end in new line / line longer than buffer, read again to get rest of the line)
+file_read_line_to_buffer proc
+    push esi
+    push edi
+    push edx
+    assume edx: ptr bufferedfile
+
+    ; copy to buffer
+    mov esi, 0
+    mov ecx, 0
+    mov cl, [edx].bf_len
+    test cl, cl
+    jz clear_bufferedfile
+file_copy_to_buffer:
+    mov al, [edx].bf_buffer[esi]
+    mov buffer[esi], al
+    inc esi
+    loop file_copy_to_buffer
+
+clear_bufferedfile:
+    mov [edx].bf_len, 0
+
+    ; read from file
+    mov eax, [edx].bf_handle
+    mov ecx, BUFFER_LENGTH
+    sub ecx, esi
+    lea edx, buffer[esi]
+    call readfromfile
+    pop edx
+
+    ; check for new line
+    mov ecx, esi
+    add ecx, eax
+    mov esi, 0
+buffer_find_new_line:
+    cmp buffer[esi], 10
+    je buffer_new_line_found
+    inc esi
+    loop buffer_find_new_line
+
+    ; no new line
+    mov eax, esi
+    stc
+    jmp file_read_line_end
+
+    ; copy to bufferedfile
+buffer_new_line_found:
+    inc esi
+    push esi
+    mov edi, 0
+    mov ecx, BUFFER_LENGTH
+    sub ecx, esi
+    mov [edx].bf_len, cl
+    test cl, cl
+    jz file_copy_from_buffer_end
+file_copy_from_buffer:
+    mov al, buffer[esi]
+    mov [edx].bf_buffer[edi], al
+    inc edi
+    inc esi
+    loop file_copy_from_buffer
+file_copy_from_buffer_end:
+    pop eax
+
+file_read_line_end:
+    pop edi
+    pop esi
+    ret
+file_read_line_to_buffer endp
+
 ; read string into the buffer
-; overwrite ecx, edx
-; set eax = length of string (not including 0)
+; overwrite eax, edx
+; set ecx = length of string (not including 0)
 read_to_buffer proc
     lea edx, buffer
     mov ecx, BUFFER_LENGTH
     call readstring
+    mov ecx, eax
     ret
 read_to_buffer endp
+
+; copy buffer to another buffer
+; edx = offset of the target buffer
+; ecx = number of bytes to copy
+; overwrite al
+copy_buffer_to proc
+    push esi
+    mov eax, esi
+    mov esi, 0
+copy_loop:
+    mov al, buffer[esi]
+    mov [edx + esi], al
+    inc esi
+    loop copy_loop
+    pop esi
+    ret
+copy_buffer_to endp
 
 ; compare string to buffer
 ; edx = offset of the string to be compared to
 ; ecx = number of bytes to compare
-; overwrite ax, ecx
+; overwrite al, ecx
 ; set flags same as cmp
 buffer_cmp proc
     push esi
     mov esi, 0
 buffer_cmp_loop:
     mov al, [edx + esi]
-    mov ah, [buffer + esi]
-    cmp al, ah
+    cmp al, buffer[esi]
     ; jump if different byte
     jne buffer_cmp_end
     inc esi
     loop buffer_cmp_loop
 buffer_cmp_end:
     ; set flags again
-    cmp al, ah
+    cmp al, buffer[esi]
     pop esi
     ret
 buffer_cmp endp
