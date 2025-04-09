@@ -79,9 +79,6 @@ dti_threshold     real4 36.0
 debt_total        dd 0.0
 income_gross      dd 0.0
 
-filenametest db "testdata", 0
-filetest bufferedfile <?>
-
 .code
 main proc
     call clear
@@ -568,6 +565,7 @@ clear endp
 ; overwrite ecx
 ; set eax = number of characters read
 ; set CF if buffer[eax - 1] is not char 10 (file does not end in new line / line longer than buffer, read again to get rest of the line)
+; set ZF if nothing to read
 file_read_line_to_buffer proc
     push esi
     push edi
@@ -600,7 +598,13 @@ clear_bufferedfile:
     ; check for new line
     mov ecx, esi
     add ecx, eax
+    push ecx
     mov esi, 0
+    .if ecx == 0
+        pop eax ; set ZF
+        test al, al
+        jmp file_read_line_end
+    .endif
 buffer_find_new_line:
     cmp buffer[esi], 10
     je buffer_new_line_found
@@ -608,27 +612,28 @@ buffer_find_new_line:
     loop buffer_find_new_line
 
     ; no new line
-    mov eax, esi
+    pop eax
     stc
     jmp file_read_line_end
 
     ; copy to bufferedfile
 buffer_new_line_found:
     inc esi
+    pop ecx
     push esi
     mov edi, 0
-    mov ecx, BUFFER_LENGTH
     sub ecx, esi
     mov [edx].bf_len, cl
-    test cl, cl
-    jz file_copy_from_buffer_end
-file_copy_from_buffer:
-    mov al, buffer[esi]
-    mov [edx].bf_buffer[edi], al
-    inc edi
-    inc esi
-    loop file_copy_from_buffer
-file_copy_from_buffer_end:
+
+    .if ecx > 0
+    file_copy_from_buffer:
+        mov al, buffer[esi]
+        mov [edx].bf_buffer[edi], al
+        inc edi
+        inc esi
+        loop file_copy_from_buffer
+    .endif
+    or eax, -1 ; clear ZF
     pop eax
 
 file_read_line_end:
