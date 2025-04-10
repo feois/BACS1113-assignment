@@ -1,6 +1,10 @@
 include irvine32.inc
 
 .data
+ASCII_TAB = 9
+ASCII_NEWLINE = 10
+TAB_OFFSET = 2
+
 datetime systemtime <>
 month_str db "JanFebMarAprMayJunJulAugSepOctNovDec"
 
@@ -20,7 +24,7 @@ float_hundred real4 100.0
 ; generic variable used to store float (in IEEE single-precision format) temporarily
 float_register real4 ?
 
-system_logo db "Super Banking Calculator", 9, 0
+system_logo db "Super Banking Calculator", ASCII_TAB, 0
 
 account_filename db "accounts", 0
 account_backup db "accounts.bak", 0
@@ -32,7 +36,7 @@ password_length db ?
 MAX_ATTEMPTS = 3
 attempts dd ?
 
-login_dialog db "Login/Register", 0
+login_dialog db TAB_OFFSET dup (ASCII_TAB), "Login/Register", 0
 cancel_dialog db "Enter empty input to exit", 0
 username_dialog db "Username: ", 0
 password_dialog db "Password: ", 0
@@ -42,9 +46,8 @@ attempt_dialog_2 db " more times left)", 0
 attempt_fail_dialog db "You have been temporarily locked out of the system due to too many incorrect password attempts", 0
 invalid_account_file_dialog db "Error: Account database is invalid", 0
 
-menu_dialog db "Menu", 0
-
-wait_dialog db "Press Enter to continue", 0
+menu_dialog db TAB_OFFSET dup (ASCII_TAB), "Main Menu", 0
+menu_username_dialog db "Currently logged in as: ", 0
 
 option_loan db "Compute loan", 0
 option_interest db "Compute compound interest", 0
@@ -54,6 +57,8 @@ option_exit db "Exit", 0
 options dd offset option_loan, offset option_interest, offset option_debt, offset option_logout, offset option_exit
 option_dialog db "Please select a valid option (1-", '0' + lengthof options, "): ", 0
 selected_option dd ?
+
+wait_dialog db "Press Enter to continue", 0
 
 values_dialog db "Please enter the following values", 0
 
@@ -90,6 +95,7 @@ income_gross      dd 0.0
 .code
 main proc
 main_start:
+    ; print login screen
     mov attempts, MAX_ATTEMPTS
     call clear
     lea edx, login_dialog
@@ -99,12 +105,14 @@ main_start:
     lea edx, cancel_dialog
     call writestring
     call crlf
+
+    ; ask for username
     lea edx, username_dialog
     call writestring
-    call read_to_buffer
+    call read_string_with_buffer
     jz main_end
 
-    ; copy username
+    ; copy username from buffer
     mov username_length, cl
     lea edx, username
     call copy_buffer_to
@@ -112,19 +120,24 @@ main_start:
     mov al, username_length
     mov username[eax], 0
 
+    ; open and read account database
     lea edx, account_filename
     call openinputfile
-    ; file not exist
+
+    ; check if file not exist
     cmp eax, INVALID_HANDLE_VALUE
     je register
     mov account_file.bf_handle, eax
 find_username:
+    ; read a line from account database
     lea edx, account_file
     call file_read_line_fit_buffer
     jc invalid_account_file
-    jo register
-    jz register
+    jo invalid_account_file
+    jz register ; reach the end of file already
     dec eax ; ignore new line
+
+    ; check if line is the username we are looking for
     mov ecx, 0
     mov cl, username_length
     .if eax == ecx
@@ -132,8 +145,10 @@ find_username:
         call buffer_cmp
         je login
     .endif
+
+    ; read another line to skip the password
     lea edx, account_file
-    call file_read_line_fit_buffer ; skip password
+    call file_read_line_fit_buffer
     jmp find_username
 invalid_account_file:
     mov eax, account_file.bf_handle
@@ -144,18 +159,27 @@ invalid_account_file:
     call crlf
     exit
 register:
+    ; ask for password
     lea edx, new_account_dialog
     call writestring
     call crlf
     lea edx, password_dialog
     call writestring
-    call read_to_buffer
+    call read_string_with_buffer
     jz main_end
+
+    ; copy password from buffer
     mov password_length, cl
     lea edx, password
     call copy_buffer_to
+
+    ; close account database if it exists
     mov eax, account_file.bf_handle
-    call closefile
+    .if eax != INVALID_HANDLE_VALUE
+        call closefile
+    .endif
+
+    ; reopen account database
     lea edx, account_filename
     call openinputfile
     .if eax == INVALID_HANDLE_VALUE ; account database does not exist
@@ -164,6 +188,7 @@ register:
         mov account_file.bf_handle, eax
     .else
         mov account_file.bf_handle, eax
+
         ; copy to backup
         lea edx, account_backup
         call createoutputfile
@@ -174,6 +199,7 @@ register:
         call closefile
         mov eax, account_file.bf_handle
         call closefile
+
         ; copy from backup
         lea edx, account_backup
         call openinputfile
@@ -184,46 +210,59 @@ register:
         pop edx
         push edx
         call copy_file
+
+        ; close backup database
         pop eax
         call closefile
     .endif
+
     ; write username
     mov eax, account_file.bf_handle
     lea edx, username
     mov ecx, 0
     mov cl, username_length
-    mov username[ecx], 10
+    mov username[ecx], ASCII_NEWLINE
     inc ecx
     call writetofile
     mov ecx, 0
     mov cl, username_length
     mov username[ecx], 0
+
     ; write password
     mov eax, account_file.bf_handle
     lea edx, password
     mov ecx, 0
     mov cl, password_length
-    mov password[ecx], 10
+    mov password[ecx], ASCII_NEWLINE
     inc ecx
     call writetofile
     mov ecx, 0
     mov cl, username_length
     mov password[ecx], 0
+
     ; close file
     mov eax, account_file.bf_handle
     call closefile
     jmp menu
 login:
+    ; read the password
     lea edx, account_file
     call file_read_line_fit_buffer
     jc invalid_account_file
     jz invalid_account_file
-    dec eax
+    dec eax ; ignore new line
+
+    ; copy password from buffer
     mov password_length, al
     lea edx, password
     mov ecx, eax
     call copy_buffer_to
+
+    ; close database
+    mov eax, account_file.bf_handle
+    call closefile
 login_attempt:
+    ; print login screen
     call clear
     lea edx, login_dialog
     call writestring
@@ -234,6 +273,8 @@ login_attempt:
     lea edx, username
     call writestring
     call crlf
+
+    ; check if not first attempt
     .if attempts != MAX_ATTEMPTS
         lea edx, attempt_dialog_1
         call writestring
@@ -243,36 +284,43 @@ login_attempt:
         call writestring
         call crlf
     .endif
+
+    ; ask for password
     lea edx, password_dialog
     call writestring
-    call read_to_buffer
+    call read_string_with_buffer
+
+    ; check password
     mov ecx, 0
     mov cl, password_length
     .if eax == ecx
         lea edx, password
         call buffer_cmp
-        je login_success
+        je menu
     .endif
+
+    ; incorrect password
     dec attempts
     jz login_fail
     jmp login_attempt
 login_fail:
-    mov eax, account_file.bf_handle
-    call closefile
     call clear
     lea edx, attempt_fail_dialog
     call writestring
     call crlf
     exit
-login_success:
-    mov eax, account_file.bf_handle
-    call closefile
 menu:
     call clear
-
     ; print dialog
     lea edx, menu_dialog
     call writestring
+    call crlf
+    call crlf
+    lea edx, menu_username_dialog
+    call writestring
+    lea edx, username
+    call writestring
+    call crlf
     call crlf
     mov ecx, lengthof options
     mov esi, 0
@@ -309,10 +357,14 @@ menu_loop:
     mov selected_option, eax
 option_selected:
     call clear
+    mov al, ASCII_TAB
+    call writechar
+    call writechar
     mov edx, selected_option
     call writestring
     call crlf
     call crlf
+
     ; jump to function page
     cmp edx, offset option_loan
     je loan
@@ -350,7 +402,7 @@ loan:
 
     .if loan_r == 0
         ; ask for rate
-        call read_to_buffer
+        call read_string_with_buffer
 
         ; try convert to float
         lea edx, buffer
@@ -447,7 +499,7 @@ interest:
     call writestring
 
     .if interest_r == 0
-        call read_to_buffer
+        call read_string_with_buffer
         lea edx, buffer
         call str_to_float
         jc option_selected
@@ -465,7 +517,7 @@ interest:
     call writestring
 
     .if interest_n == 0
-        call read_to_buffer
+        call read_string_with_buffer
         lea edx, buffer
         call str_to_float
         jc option_selected
@@ -481,7 +533,7 @@ interest:
     call writestring
 
     .if interest_t == 0
-        call read_to_buffer
+        call read_string_with_buffer
         lea edx, buffer
         call str_to_float
         jc option_selected
@@ -592,7 +644,7 @@ wait_input:
     lea edx, wait_dialog
     call writestring
     call crlf
-    call read_to_buffer
+    call read_string_with_buffer
     jmp menu
 main_end:
     call clear
@@ -640,7 +692,7 @@ clear proc
     ; print year
     mov ax, datetime.wyear
     call writedec
-    mov al, 9
+    mov al, ASCII_TAB
     call writechar
     ; print hour
     mov ax, datetime.whour
@@ -663,7 +715,7 @@ clear proc
     ret
 clear endp
 
-; read line (string ends with char 10) to a buffer from a bufferedfile
+; read line (string ends with ASCII_NEWLINE) to the buffer from a bufferedfile
 ; edx = offset of bufferedfile
 ; overwrite ecx
 ; set eax = number of characters read
@@ -710,7 +762,7 @@ clear_bufferedfile:
         jmp file_read_line_end
     .endif
 buffer_find_new_line:
-    cmp buffer[esi], 10
+    cmp buffer[esi], ASCII_NEWLINE
     je buffer_new_line_found
     inc esi
     loop buffer_find_new_line
@@ -792,14 +844,14 @@ copy_file endp
 ; overwrite eax, edx
 ; set ecx = length of string (not including 0)
 ; set ZF if input is empty
-read_to_buffer proc
+read_string_with_buffer proc
     lea edx, buffer
     mov ecx, BUFFER_LENGTH
     call readstring
     mov ecx, eax
     test ecx, ecx
     ret
-read_to_buffer endp
+read_string_with_buffer endp
 
 ; copy buffer to another buffer
 ; edx = offset of the target buffer
