@@ -22,18 +22,25 @@ float_register real4 ?
 
 system_logo db "Super Banking Calculator", 9, 0
 
-attempt_str db " more times", 0
-attempt_lock db "You have attempted too many times", 0
+account_filename db "accounts", 0
+account_backup db "accounts.bak", 0
+account_file bufferedfile <?>
+username db BUFFER_LENGTH dup (?), 0
+username_length db ?
+password db BUFFER_LENGTH dup (?), 0
+password_length db ?
+MAX_ATTEMPTS = 3
+attempts dd ?
 
-login_dialog db "Please enter username (Empty to cancel): ", 0
-wrong_username db "Wrong username! You can only attempt ", 0
-username db "wilson"
-username_attempt dd 3
-
-password_dialog db "Please enter password (Empty to cancel): ", 0
-wrong_password db "Wrong password! You can only attempt ", 0
-password db "password"
-password_attempt dd 3
+login_dialog db "Login/Register", 0
+cancel_dialog db "Enter empty input to exit", 0
+username_dialog db "Username: ", 0
+password_dialog db "Password: ", 0
+new_account_dialog db "This username does not exist, a new account will be created", 0
+attempt_dialog_1 db "You can only attempt 3 times! (", 0
+attempt_dialog_2 db " more times left)", 0
+attempt_fail_dialog db "You have been temporarily locked out of the system due to too many incorrect password attempts", 0
+invalid_account_file_dialog db "Error: Account database is invalid", 0
 
 menu_dialog db "Menu", 0
 
@@ -42,8 +49,9 @@ wait_dialog db "Press Enter to continue", 0
 option_loan db "Compute loan", 0
 option_interest db "Compute compound interest", 0
 option_debt db "Compute Debt-to-Interest ratio", 0
+option_logout db "Log out", 0
 option_exit db "Exit", 0
-options dd offset option_loan, offset option_interest, offset option_debt, offset option_exit
+options dd offset option_loan, offset option_interest, offset option_debt, offset option_logout, offset option_exit
 option_dialog db "Please select a valid option (1-", '0' + lengthof options, "): ", 0
 selected_option dd ?
 
@@ -81,86 +89,184 @@ income_gross      dd 0.0
 
 .code
 main proc
+main_start:
+    mov attempts, MAX_ATTEMPTS
     call clear
-login_username:
-    ; print dialog
     lea edx, login_dialog
     call writestring
-
-    ; read username
+    call crlf
+    call crlf
+    lea edx, cancel_dialog
+    call writestring
+    call crlf
+    lea edx, username_dialog
+    call writestring
     call read_to_buffer
+    jz main_end
 
-    .if ecx == 0
-        ; empty input
-        jmp main_end
-    .elseif ecx == sizeof username
-        ; check username
+    ; copy username
+    mov username_length, cl
+    lea edx, username
+    call copy_buffer_to
+    mov eax, 0
+    mov al, username_length
+    mov username[eax], 0
+
+    lea edx, account_filename
+    call openinputfile
+    ; file not exist
+    cmp eax, INVALID_HANDLE_VALUE
+    je register
+    mov account_file.bf_handle, eax
+find_username:
+    lea edx, account_file
+    call file_read_line_fit_buffer
+    jc invalid_account_file
+    jo register
+    jz register
+    dec eax ; ignore new line
+    mov ecx, 0
+    mov cl, username_length
+    .if eax == ecx
         lea edx, username
         call buffer_cmp
-        ; username correct
-        je login_password
+        je login
     .endif
-
-    ; wrong username
+    lea edx, account_file
+    call file_read_line_fit_buffer ; skip password
+    jmp find_username
+invalid_account_file:
+    mov eax, account_file.bf_handle
+    call closefile
     call clear
-
-    ; check attempts
-    dec username_attempt
-    .if username_attempt == 0
-        lea edx, attempt_lock
-        call writestring
-        call crlf
-        exit
-    .endif
-
-    lea edx, wrong_username
-    call writestring
-    mov eax, username_attempt
-    call writedec
-    lea edx, attempt_str
+    lea edx, invalid_account_file_dialog
     call writestring
     call crlf
-    jmp login_username
-login_password:
-    ; print dialog
+    exit
+register:
+    lea edx, new_account_dialog
+    call writestring
+    call crlf
     lea edx, password_dialog
     call writestring
-
-    ; read password
     call read_to_buffer
-
-    .if ecx == 0
-        ; empty input
-        jmp main_end
-    .elseif sizeof password
-        ; check password
-        lea edx, password
-        call buffer_cmp
-        ; password correct
-        je menu
+    jz main_end
+    mov password_length, cl
+    lea edx, password
+    call copy_buffer_to
+    mov eax, account_file.bf_handle
+    call closefile
+    lea edx, account_filename
+    call openinputfile
+    .if eax == INVALID_HANDLE_VALUE ; account database does not exist
+        lea edx, account_filename
+        call createoutputfile
+        mov account_file.bf_handle, eax
+    .else
+        mov account_file.bf_handle, eax
+        ; copy to backup
+        lea edx, account_backup
+        call createoutputfile
+        push eax
+        mov edx, account_file.bf_handle
+        call copy_file
+        pop eax
+        call closefile
+        mov eax, account_file.bf_handle
+        call closefile
+        ; copy from backup
+        lea edx, account_backup
+        call openinputfile
+        push eax
+        lea edx, account_filename
+        call createoutputfile
+        mov account_file.bf_handle, eax
+        pop edx
+        push edx
+        call copy_file
+        pop eax
+        call closefile
     .endif
-
-    ; wrong password
+    ; write username
+    mov eax, account_file.bf_handle
+    lea edx, username
+    mov ecx, 0
+    mov cl, username_length
+    mov username[ecx], 10
+    inc ecx
+    call writetofile
+    mov ecx, 0
+    mov cl, username_length
+    mov username[ecx], 0
+    ; write password
+    mov eax, account_file.bf_handle
+    lea edx, password
+    mov ecx, 0
+    mov cl, password_length
+    mov password[ecx], 10
+    inc ecx
+    call writetofile
+    mov ecx, 0
+    mov cl, username_length
+    mov password[ecx], 0
+    ; close file
+    mov eax, account_file.bf_handle
+    call closefile
+    jmp menu
+login:
+    lea edx, account_file
+    call file_read_line_fit_buffer
+    jc invalid_account_file
+    jz invalid_account_file
+    dec eax
+    mov password_length, al
+    lea edx, password
+    mov ecx, eax
+    call copy_buffer_to
+login_attempt:
     call clear
-
-    ; check attempts
-    dec password_attempt
-    .if password_attempt == 0
-        call clear
-        lea edx, attempt_lock
-        call writestring
-        call crlf
-        exit
-    .endif
-
-    lea edx, wrong_password
-    call writestring
-    mov eax, password_attempt
-    call writedec
-    lea edx, attempt_str
+    lea edx, login_dialog
     call writestring
     call crlf
-    jmp login_password
+    call crlf
+    lea edx, username_dialog
+    call writestring
+    lea edx, username
+    call writestring
+    call crlf
+    .if attempts != MAX_ATTEMPTS
+        lea edx, attempt_dialog_1
+        call writestring
+        mov eax, attempts
+        call writedec
+        lea edx, attempt_dialog_2
+        call writestring
+        call crlf
+    .endif
+    lea edx, password_dialog
+    call writestring
+    call read_to_buffer
+    mov ecx, 0
+    mov cl, password_length
+    .if eax == ecx
+        lea edx, password
+        call buffer_cmp
+        je login_success
+    .endif
+    dec attempts
+    jz login_fail
+    jmp login_attempt
+login_fail:
+    mov eax, account_file.bf_handle
+    call closefile
+    call clear
+    lea edx, attempt_fail_dialog
+    call writestring
+    call crlf
+    exit
+login_success:
+    mov eax, account_file.bf_handle
+    call closefile
 menu:
     call clear
 
@@ -214,6 +320,8 @@ option_selected:
     je interest
     cmp edx, offset option_debt
     je debt
+    cmp edx, offset option_logout
+    je main_start
     cmp edx, offset option_exit
     je main_end
 loan:
@@ -349,6 +457,8 @@ interest:
 
     mov eax, interest_r
     call print_float
+    mov al, '%'
+    call writechar
     call crlf
 
     lea edx, interest_n_dialog
@@ -389,13 +499,6 @@ interest:
     fld interest_r
     fdiv float_hundred
     fdiv interest_n
-
-    fst float_register
-    mov eax, float_register
-    call writebin
-    call crlf
-    call print_float
-    call crlf
 
     fld1
     fadd
@@ -514,6 +617,11 @@ clear proc
     lea edx, datetime
     push edx
     call getlocaltime
+    ; print day
+    mov ax, datetime.wday
+    call writedec
+    mov al, ' '
+    call writechar
     ; print month
     mov dx, datetime.wmonth
     mov ax, dx
@@ -527,11 +635,6 @@ clear proc
     call writechar
     mov al, [edx + 2]
     call writechar
-    mov al, ' '
-    call writechar
-    ; print day
-    mov ax, datetime.wday
-    call writedec
     mov al, ' '
     call writechar
     ; print year
@@ -564,7 +667,8 @@ clear endp
 ; edx = offset of bufferedfile
 ; overwrite ecx
 ; set eax = number of characters read
-; set CF if buffer[eax - 1] is not char 10 (file does not end in new line / line longer than buffer, read again to get rest of the line)
+; set OF if line does not end with new line and this is the last line
+; set CF if line is longer than buffer (call again to read rest of the line)
 ; set ZF if nothing to read
 file_read_line_to_buffer proc
     push esi
@@ -601,8 +705,8 @@ clear_bufferedfile:
     push ecx
     mov esi, 0
     .if ecx == 0
-        pop eax ; set ZF
-        test al, al
+        pop eax
+        test cl, cl ; set ZF
         jmp file_read_line_end
     .endif
 buffer_find_new_line:
@@ -613,7 +717,13 @@ buffer_find_new_line:
 
     ; no new line
     pop eax
-    stc
+    .if eax == BUFFER_LENGTH
+        or eax, 0 ; clear CF, OF and ZF
+        stc
+    .else
+        or eax, 0 ; clear CF, OF and ZF
+        inc cl ; set OF
+    .endif
     jmp file_read_line_end
 
     ; copy to bufferedfile
@@ -633,7 +743,7 @@ buffer_new_line_found:
         inc esi
         loop file_copy_from_buffer
     .endif
-    or eax, -1 ; clear ZF
+    or eax, -1 ; clear CF, OF and ZF
     pop eax
 
 file_read_line_end:
@@ -642,14 +752,52 @@ file_read_line_end:
     ret
 file_read_line_to_buffer endp
 
+; same as file_read_line_to_buffer but skip the whole line if it's longer than buffer
+; set CF if line skipped
+file_read_line_fit_buffer proc
+    call file_read_line_to_buffer
+    jc file_cf
+    ret
+file_cf:
+    call file_read_line_to_buffer
+    jc file_cf
+    stc
+    ret
+file_read_line_fit_buffer endp
+
+; eax = handle of the file to write to
+; edx = handle of the file to read from
+copy_file proc
+    local from, to
+    mov from, edx
+    mov to, eax
+    mov eax, edx
+    mov ecx, BUFFER_LENGTH
+    lea edx, buffer
+    call readfromfile
+    .while eax != 0
+        lea edx, buffer
+        mov ecx, eax
+        mov eax, to
+        call writetofile
+        mov eax, from
+        mov ecx, BUFFER_LENGTH
+        lea edx, buffer
+        call readfromfile
+    .endw
+    ret
+copy_file endp
+
 ; read string into the buffer
 ; overwrite eax, edx
 ; set ecx = length of string (not including 0)
+; set ZF if input is empty
 read_to_buffer proc
     lea edx, buffer
     mov ecx, BUFFER_LENGTH
     call readstring
     mov ecx, eax
+    test ecx, ecx
     ret
 read_to_buffer endp
 
@@ -685,6 +833,7 @@ buffer_cmp_loop:
     jne buffer_cmp_end
     inc esi
     loop buffer_cmp_loop
+    dec esi
 buffer_cmp_end:
     ; set flags again
     cmp al, buffer[esi]
