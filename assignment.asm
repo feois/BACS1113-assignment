@@ -46,6 +46,18 @@ attempt_dialog_2 db " more times left)", 0
 attempt_fail_dialog db "You have been temporarily locked out of the system due to too many incorrect password attempts", 0
 invalid_account_file_dialog db "Error: Account database is invalid", 0
 
+VALID_INPUT = 0
+INVALID_INPUT = 1
+INPUT_EMPTY = 2
+INPUT_ZERO = 3
+INPUT_OVERFLOW = 4
+input_validity db VALID_INPUT
+nzpi_invalid db "Invalid input! Please enter a non-zero positive integer", 0
+nzpi_empty db "Please enter a non-zero positive integer", 0
+nzpi_overflow db "Input too large!", 0
+nzpf_invalid db "Invalid input! Please enter a non-zero positive decimal", 0
+nzpf_empty db "Please enter a non-zero positive decimal", 0
+
 menu_dialog db TAB_OFFSET dup (ASCII_TAB), "Main Menu", 0
 menu_username_dialog db "Currently logged in as: ", 0
 
@@ -355,6 +367,7 @@ menu_loop:
     jae menu
     mov eax, [options + eax * 4]
     mov selected_option, eax
+    mov input_validity, VALID_INPUT
 option_selected:
     call clear
     mov al, ASCII_TAB
@@ -381,56 +394,33 @@ loan:
     call writestring
     call crlf
 
-    ; print principal dialog
-    lea edx, loan_p_dialog
-    call writestring
-
-    .if loan_p == 0
-        ; ask for principal
-        call readdec
-        mov loan_p, eax
-        jmp option_selected
-    .endif
-
+    ; read principal
     mov eax, loan_p
-    call writedec
+    lea edx, loan_p_dialog
+    call read_nzpi
+    jz option_selected
+    mov loan_p, eax
+    jnc option_selected
     call crlf
 
-    ; print rate dialog
-    lea edx, loan_r_dialog
-    call writestring
-
-    .if loan_r == 0
-        ; ask for rate
-        call read_string_with_buffer
-
-        ; try convert to float
-        lea edx, buffer
-        call str_to_float
-        jc option_selected
-        mov loan_r, eax
-        jmp option_selected
-    .endif
-
+    ; read rate
     mov eax, loan_r
-    call print_float
+    lea edx, loan_r_dialog
+    call read_nzpf
+    jz option_selected
+    mov loan_r, eax
+    jnc option_selected
     mov al, '%'
     call writechar
     call crlf
 
-    ; print payment dialog
-    lea edx, loan_n_dialog
-    call writestring
-
-    .if loan_n == 0
-        ; ask for rate
-        call readdec
-        mov loan_n, eax
-        jmp option_selected
-    .endif
-
+    ; read payment
     mov eax, loan_n
-    call writedec
+    lea edx, loan_n_dialog
+    call read_nzpi
+    jz option_selected
+    mov loan_n, eax
+    jnc option_selected
     call crlf
 
     fld loan_r
@@ -774,6 +764,7 @@ buffer_find_new_line:
         stc
     .else
         or eax, 0 ; clear CF, OF and ZF
+        mov cl, 7Fh
         inc cl ; set OF
     .endif
     jmp file_read_line_end
@@ -853,6 +844,142 @@ read_string_with_buffer proc
     ret
 read_string_with_buffer endp
 
+; read a non-zero positive integer
+; eax = current existing nzpi
+; edx = string to display
+; overwrite ecx, edx
+; set eax = non-zero positive integer read, zero if input invalid
+; set input_validity
+; set CF if current nzpi is non-zero
+; set ZF if input invalid
+read_nzpi proc
+    .if eax == 0
+        .if input_validity != VALID_INPUT
+            mov eax, edx
+            .if input_validity == INVALID_INPUT
+                lea edx, nzpi_invalid
+            .elseif input_validity == INPUT_EMPTY
+                lea edx, nzpi_empty
+            .elseif input_validity == INPUT_ZERO
+                lea edx, nzpi_invalid
+            .elseif input_validity == INPUT_OVERFLOW
+                lea edx, nzpi_overflow
+            .endif
+            call writestring
+            call crlf
+            mov edx, eax
+            mov input_validity, VALID_INPUT
+        .endif
+        call writestring
+        call read_string_with_buffer
+        .if ecx == 0
+            mov input_validity, INPUT_EMPTY
+            jmp nzpi_error
+        .endif
+        push esi
+        mov eax, 0
+        mov edx, 0
+        mov esi, 0
+    read_nzpi_loop:
+        ; eax *= 10
+        mov edx, eax ; edx = eax
+        shl eax, 3 ; eax *= 8
+        jc read_nzpi_overflow
+        shl edx, 1 ; edx *= 2
+        add eax, edx ; eax += edx
+        jc read_nzpi_overflow
+        ; read next char
+        mov edx, 0
+        mov dl, buffer[esi]
+        .if dl < '0' || dl > '9'
+            mov input_validity, INVALID_INPUT
+            pop esi
+            jmp nzpi_error
+        .endif
+        sub dl, '0'
+        add eax, edx
+        jc read_nzpi_overflow
+        inc esi
+        loop read_nzpi_loop
+        ; loop ends
+        pop esi
+        .if eax == 0
+            mov input_validity, INPUT_ZERO
+            jmp nzpi_error
+        .endif
+        ret
+    read_nzpi_overflow:
+        mov input_validity, INPUT_OVERFLOW
+        pop esi
+    nzpi_error:
+        xor eax, eax ; clear eax, CF and set ZF
+        ret
+    .else
+        call writestring
+        call writedec
+        test eax, eax ; clear CF and ZF
+        stc
+        ret
+    .endif
+read_nzpi endp
+
+; read a non-zero positive float
+; eax = current existing nzpf
+; edx = string to display
+; overwrite ecx, edx
+; set eax = non-zero positive float read, zero if input invalid
+; set input_validity
+; set CF if current nzpf is non-zero
+; set ZF if input invalid
+read_nzpf proc
+    .if eax == 0
+        .if input_validity != VALID_INPUT
+            mov eax, edx
+            .if input_validity == INVALID_INPUT
+                lea edx, nzpf_invalid
+            .elseif input_validity == INPUT_EMPTY
+                lea edx, nzpf_empty
+            .elseif input_validity == INPUT_ZERO
+                lea edx, nzpf_invalid
+            .endif
+            call writestring
+            call crlf
+            mov edx, eax
+            mov input_validity, VALID_INPUT
+        .endif
+        call writestring
+        call read_string_with_buffer
+        .if ecx == 0
+            mov input_validity, INPUT_EMPTY
+        .else
+            lea edx, buffer
+            call str_to_float
+            jc read_nzpf_invalid
+            .if eax == 0
+                mov input_validity, INPUT_ZERO
+            .endif
+        .endif
+        .if input_validity != VALID_INPUT
+            xor eax, eax ; clear eax, CF and set ZF
+        .else
+            test eax, eax ; clear CF and ZF
+        .endif
+        ret
+    read_nzpf_invalid:
+        mov input_validity, INVALID_INPUT
+        xor eax, eax ; clear eax, CF and set ZF
+        ret
+    .else
+        call writestring
+        mov edx, eax
+        call print_float
+        mov eax, edx
+        test eax, eax ; clear CF and ZF
+        stc
+        ret
+    .endif
+read_nzpf endp
+
 ; copy buffer to another buffer
 ; edx = offset of the target buffer
 ; ecx = number of bytes to copy
@@ -903,8 +1030,8 @@ print_double_digits proc
         mov al, ah
         mov ah, 0
     .endif
-
     call writedec
+    ret
 print_double_digits endp
 
 ; convert string to float
