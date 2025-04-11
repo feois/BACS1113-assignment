@@ -398,7 +398,6 @@ loan:
     mov eax, loan_p
     lea edx, loan_p_dialog
     call read_nzpi
-    jz option_selected
     mov loan_p, eax
     jnc option_selected
     call crlf
@@ -407,7 +406,6 @@ loan:
     mov eax, loan_r
     lea edx, loan_r_dialog
     call read_nzpf
-    jz option_selected
     mov loan_r, eax
     jnc option_selected
     mov al, '%'
@@ -418,7 +416,6 @@ loan:
     mov eax, loan_n
     lea edx, loan_n_dialog
     call read_nzpi
-    jz option_selected
     mov loan_n, eax
     jnc option_selected
     call crlf
