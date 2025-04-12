@@ -469,68 +469,34 @@ interest:
     call writestring
     call crlf
 
-    lea edx, interest_p_dialog
-    call writestring
-
-    .if interest_p == 0
-        call readdec
-        mov interest_p, eax
-        jmp option_selected
-    .endif
-
     mov eax, interest_p
-    call writedec
+    lea edx, interest_p_dialog
+    call read_nzpi
+    mov interest_p, eax
+    jnc option_selected
     call crlf
 
-    lea edx, interest_r_dialog
-    call writestring
-
-    .if interest_r == 0
-        call read_string_with_buffer
-        lea edx, buffer
-        call str_to_float
-        jc option_selected
-        mov interest_r, eax
-        jmp option_selected
-    .endif
-
     mov eax, interest_r
-    call print_float
+    lea edx, interest_r_dialog
+    call read_nzpf
+    mov interest_r, eax
+    jnc option_selected
     mov al, '%'
     call writechar
     call crlf
 
-    lea edx, interest_n_dialog
-    call writestring
-
-    .if interest_n == 0
-        call read_string_with_buffer
-        lea edx, buffer
-        call str_to_float
-        jc option_selected
-        mov interest_n, eax
-        jmp option_selected
-    .endif
-
     mov eax, interest_n
-    call print_float
+    lea edx, interest_n_dialog
+    call read_nzpf
+    mov interest_n, eax
+    jnc option_selected
     call crlf
-
-    lea edx, interest_t_dialog
-    call writestring
-
-    .if interest_t == 0
-        call read_string_with_buffer
-        lea edx, buffer
-        call str_to_float
-        jc option_selected
-        mov interest_t, eax
-        jmp option_selected
-    .endif
 
     mov eax, interest_t
-    call print_float
-    call crlf
+    lea edx, interest_t_dialog
+    call read_nzpf
+    mov interest_t, eax
+    jnc option_selected
     call crlf
 
     fld interest_n
@@ -553,6 +519,7 @@ interest:
     fimul interest_p
     fstp float_register
 
+    call crlf
     lea edx, interest_dialog
     call writestring
     mov eax, float_register
