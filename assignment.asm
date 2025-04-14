@@ -51,6 +51,7 @@ INVALID_INPUT = 1
 INPUT_EMPTY = 2
 INPUT_ZERO = 3
 INPUT_OVERFLOW = 4
+INPUT_OUT_OF_RANGE = 5
 input_validity db VALID_INPUT
 nzpi_invalid db "Invalid input! Please enter a non-zero positive integer", 0
 nzpi_empty db "Please enter a non-zero positive integer", 0
@@ -58,6 +59,7 @@ nzpi_overflow db "Input too large!", 0
 nzpf_invalid db "Invalid input! Please enter a non-zero positive decimal", 0
 nzpf_empty db "Please enter a non-zero positive decimal", 0
 nzpf_overflow db "Input too large!", 0
+menu_input_out_of_range db "Input out of range!", 0
 
 menu_dialog db TAB_OFFSET dup (ASCII_TAB), "Main Menu", 0
 menu_username_dialog db "Currently logged in as: ", 0
@@ -98,7 +100,7 @@ interest_dialog db "Final amount: RM ", 0
 ;HOCHEEHIN
 debt_total_dialog db "Total monthly debt payment: RM ", 0
 income_dialog db "Gross monthly income: RM ", 0
-dti_result_dialog db "Debt-to-Income Ratio: ", 0
+dti_result_dialog db "Debt-to-Income Ratio (rounded): ", 0
 dti_approve       db "Loan approved (DTI <= 36%)", 0
 dti_reject        db "Loan rejected (DTI > 36%)", 0
 dti_threshold     real4 36.0
@@ -353,20 +355,22 @@ menu_loop:
 
     ; ask for option selection
     call crlf
+    .if input_validity == INPUT_OUT_OF_RANGE
+        lea edx, menu_input_out_of_range
+        call writestring
+        call crlf
+        mov input_validity, VALID_INPUT
+    .endif
+    mov eax, 0
     lea edx, option_dialog
-    call writestring
-
-    ; option input
-    call readdec
+    call read_nzpi
+    jz menu
 
     ; check for invalid input
-    jc menu
-    test eax, eax
-    jz menu
-    dec eax
     cmp eax, lengthof options
-    jae menu
-    mov eax, [options + eax * 4]
+    mov input_validity, INPUT_OUT_OF_RANGE
+    ja menu
+    mov eax, [options + eax * type options - type options]
     mov selected_option, eax
     mov input_validity, VALID_INPUT
 option_selected:
@@ -539,34 +543,22 @@ debt:
     call writestring
     call crlf
 
-    lea edx, debt_total_dialog
-    call writestring
-
-    .if debt_total == 0
-        call readdec
-        mov debt_total, eax
-        jmp option_selected
-    .endif
-
     mov eax, debt_total
-    call writedec
+    lea edx, debt_total_dialog
+    call read_nzpi
+    mov debt_total, eax
+    jnc option_selected
     call crlf
-
-    lea edx, income_dialog
-    call writestring
-
-    .if income_gross == 0
-        call readdec
-        mov income_gross, eax
-        jmp option_selected
-    .endif
 
     mov eax, income_gross
-    call writedec
+    lea edx, income_dialog
+    call read_nzpi
+    mov income_gross, eax
+    jnc option_selected
     call crlf
 
-    fld debt_total
-    fdiv income_gross
+    fild debt_total
+    fidiv income_gross
     fmul float_hundred
     fst float_register
 
@@ -600,6 +592,7 @@ wait_input:
     call writestring
     call crlf
     call read_string_with_buffer
+    mov input_validity, VALID_INPUT ; input_validity should be VALID_INPUT but just to be safe
     jmp menu
 main_end:
     call clear
