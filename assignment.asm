@@ -57,6 +57,7 @@ nzpi_empty db "Please enter a non-zero positive integer", 0
 nzpi_overflow db "Input too large!", 0
 nzpf_invalid db "Invalid input! Please enter a non-zero positive decimal", 0
 nzpf_empty db "Please enter a non-zero positive decimal", 0
+nzpf_overflow db "Input too large!", 0
 
 menu_dialog db TAB_OFFSET dup (ASCII_TAB), "Main Menu", 0
 menu_username_dialog db "Currently logged in as: ", 0
@@ -852,6 +853,7 @@ read_nzpi proc
         shl edx, 1 ; edx *= 2
         add eax, edx ; eax += edx
         jc read_nzpi_overflow
+
         ; read next char
         mov edx, 0
         mov dl, buffer[esi]
@@ -865,6 +867,7 @@ read_nzpi proc
         jc read_nzpi_overflow
         inc esi
         loop read_nzpi_loop
+
         ; loop ends
         pop esi
         .if eax == 0
@@ -905,33 +908,47 @@ read_nzpf proc
                 lea edx, nzpf_empty
             .elseif input_validity == INPUT_ZERO
                 lea edx, nzpf_invalid
+            .elseif input_validity == INPUT_OVERFLOW
+                lea edx, nzpf_overflow
             .endif
             call writestring
             call crlf
             mov edx, eax
             mov input_validity, VALID_INPUT
         .endif
+
         call writestring
         call read_string_with_buffer
         .if ecx == 0
             mov input_validity, INPUT_EMPTY
-        .else
-            lea edx, buffer
-            call str_to_float
-            jc read_nzpf_invalid
-            .if eax == 0
-                mov input_validity, INPUT_ZERO
-            .endif
-        .endif
-        .if input_validity != VALID_INPUT
             xor eax, eax ; clear eax, CF and set ZF
-        .else
-            test eax, eax ; clear CF and ZF
+            ret
         .endif
+
+        lea edx, buffer
+        call str_to_float
+        jc read_nzpf_invalid
+        .if eax == 0
+            mov input_validity, INPUT_ZERO
+            xor eax, eax
+            ret
+        .endif
+
+        mov edx, eax
+        shr edx, 23
+        sub dl, 127
+        cmp dl, 32
+        jge read_nzpf_overflow
+
+        test eax, eax ; clear CF and ZF
         ret
     read_nzpf_invalid:
         mov input_validity, INVALID_INPUT
-        xor eax, eax ; clear eax, CF and set ZF
+        xor eax, eax
+        ret
+    read_nzpf_overflow:
+        mov input_validity, INPUT_OVERFLOW
+        xor eax, eax
         ret
     .else
         call writestring
@@ -1109,13 +1126,12 @@ print_float proc
     mov float_register, eax
 
     ; extract exponent
-    and eax, 7F800000h
     shr eax, 23
     sub al, 127
 
     ; check if float >= 2^32
     cmp al, 32
-    jg print_float_error
+    jge print_float_error
 
     mov cl, al
 
@@ -1148,7 +1164,6 @@ print_float_integer:
 
     ; extract exponent
     mov eax, float_register
-    and eax, 7F800000h
     shr eax, 23
     sub al, 127
     mov cl, al
