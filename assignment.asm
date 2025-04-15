@@ -64,12 +64,13 @@ menu_input_out_of_range db "Input out of range!", 0
 menu_dialog db TAB_OFFSET dup (ASCII_TAB), "Main Menu", 0
 menu_username_dialog db "Currently logged in as: ", 0
 
-option_loan db "Compute loan", 0
+option_loan db "Compute loan EMI (Estimated Monthly Instalment)", 0
 option_interest db "Compute compound interest", 0
 option_debt db "Compute Debt-to-Interest ratio", 0
+option_summary db "Summary Report", 0
 option_logout db "Log out", 0
 option_exit db "Exit", 0
-options dd offset option_loan, offset option_interest, offset option_debt, offset option_logout, offset option_exit
+options dd offset option_loan, offset option_interest, offset option_debt, offset option_summary, offset option_logout, offset option_exit
 option_dialog db "Please select a valid option (1-", '0' + lengthof options, "): ", 0
 selected_option dd ?
 
@@ -88,24 +89,38 @@ loan_dialog db "Estimated Monthly Instalment: RM ", 0
 exit_dialog db "Thank you for using this application", 0
 
 interest_p_dialog db "Principal: RM ", 0
-interest_r_dialog db "Interest rate (in %): ", 0
-interest_n_dialog db "Compounding frequency per year: ", 0
+interest_r_dialog db "Annual interest rate (in %): ", 0
+interest_n_dialog db "Compounding frequency per year (e.g. 1: annually, 12: monthly, 52: weekly, 365: daily): ", 0
 interest_t_dialog db "Time in years: ", 0
 interest_p dd 0
 interest_r real4 0.0
-interest_n real4 0.0
+interest_n dd 0
 interest_t real4 0.0
 interest_dialog db "Final amount: RM ", 0
 
 ;HOCHEEHIN
-debt_total_dialog db "Total monthly debt payment: RM ", 0
-income_dialog db "Gross monthly income: RM ", 0
-dti_result_dialog db "Debt-to-Income Ratio (rounded): ", 0
-dti_approve       db "Loan approved (DTI <= 36%)", 0
-dti_reject        db "Loan rejected (DTI > 36%)", 0
-dti_threshold     real4 36.0
-debt_total        dd 0.0
-income_gross      dd 0.0
+debt_payment_dialog db      "Total monthly debt payment: RM ", 0
+income_dialog       db      "Gross monthly income: RM ", 0
+dti_result_dialog   db      "Debt-to-Income Ratio (rounded): ", 0
+dti_approve         db      "Loan approved (DTI <= 36%)", 0
+dti_reject          db      "Loan rejected (DTI > 36%)", 0
+dti_threshold       real4   36.0
+debt_payment        dd      0
+gross_income        dd      0
+
+summary_loan_p dd 0
+summary_loan_r real4 0.0
+summary_loan_n dd 0
+summary_loan real4 0.0
+summary_interest_p dd 0
+summary_interest_r real4 0.0
+summary_interest_n dd 0
+summary_interest_t real4 0.0
+summary_interest real4 0.0
+summary_debt_payment dd 0
+summary_gross_income dd 0
+summary_dti real4 0.0
+summary_debt_decision db 0
 
 .code
 main proc
@@ -463,6 +478,16 @@ loan:
     call print_float
     call crlf
 
+    ; save summary
+    mov eax, loan_p
+    mov summary_loan_p, eax
+    mov eax, loan_r
+    mov summary_loan_r, eax
+    mov eax, loan_n
+    mov summary_loan_n, eax
+    mov eax, float_register
+    mov summary_loan, eax
+
     ; reset data
     mov loan_p, 0
     mov loan_r, 0
@@ -492,7 +517,7 @@ interest:
 
     mov eax, interest_n
     lea edx, interest_n_dialog
-    call read_nzpf
+    call read_nzpi
     mov interest_n, eax
     jnc option_selected
     call crlf
@@ -504,11 +529,11 @@ interest:
     jnc option_selected
     call crlf
 
-    fld interest_n
+    fild interest_n
     fmul interest_t
     fld interest_r
     fdiv float_hundred
-    fdiv interest_n
+    fidiv interest_n
 
     fld1
     fadd
@@ -531,6 +556,17 @@ interest:
     call print_float
     call crlf
 
+    mov eax, interest_p
+    mov summary_interest_p, eax
+    mov eax, interest_r
+    mov summary_interest_r, eax
+    mov eax, interest_n
+    mov summary_interest_n, eax
+    mov eax, interest_t
+    mov summary_interest_t, eax
+    mov eax, float_register
+    mov summary_interest, eax
+
     mov interest_p, 0
     mov interest_r, 0
     mov interest_n, 0
@@ -543,22 +579,22 @@ debt:
     call writestring
     call crlf
 
-    mov eax, debt_total
-    lea edx, debt_total_dialog
+    mov eax, debt_payment
+    lea edx, debt_payment_dialog
     call read_nzpi
-    mov debt_total, eax
+    mov debt_payment, eax
     jnc option_selected
     call crlf
 
-    mov eax, income_gross
+    mov eax, gross_income
     lea edx, income_dialog
     call read_nzpi
-    mov income_gross, eax
+    mov gross_income, eax
     jnc option_selected
     call crlf
 
-    fild debt_total
-    fidiv income_gross
+    fild debt_payment
+    fidiv gross_income
     fmul float_hundred
     fst float_register
 
@@ -577,15 +613,24 @@ debt:
     fstp st
     jbe loan_approved
     lea edx, dti_reject
+    mov summary_debt_decision, 1
     jmp print_loan_decision
 loan_approved:
+    mov summary_debt_decision, 0
     lea edx, dti_approve
 print_loan_decision:
     call writestring
     call crlf
 
-    mov debt_total, 0
-    mov income_gross, 0
+    mov eax, debt_payment
+    mov summary_debt_payment, eax
+    mov eax, gross_income
+    mov summary_gross_income, eax
+    mov eax, float_register
+    mov summary_dti, eax
+
+    mov debt_payment, 0
+    mov gross_income, 0
 wait_input:
     call crlf
     lea edx, wait_dialog
