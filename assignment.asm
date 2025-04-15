@@ -59,7 +59,7 @@ nzpi_overflow db "Input too large!", 0
 nzpf_invalid db "Invalid input! Please enter a non-zero positive decimal", 0
 nzpf_empty db "Please enter a non-zero positive decimal", 0
 nzpf_overflow db "Input too large!", 0
-menu_input_out_of_range db "Input out of range!", 0
+menu_invalid_input db "Invalid input!", 0
 
 menu_dialog db TAB_OFFSET dup (ASCII_TAB), "Main Menu", 0
 menu_username_dialog db "Currently logged in as: ", 0
@@ -71,10 +71,10 @@ option_summary db "Summary Report", 0
 option_logout db "Log out", 0
 option_exit db "Exit", 0
 options dd offset option_loan, offset option_interest, offset option_debt, offset option_summary, offset option_logout, offset option_exit
-option_dialog db "Please select a valid option (1-", '0' + lengthof options, "): ", 0
+option_dialog db "Press 1~", '0' + lengthof options, " for the respective option: ", 0
 selected_option dd ?
 
-wait_dialog db "Press Enter to continue", 0
+wait_dialog db "Press any key to continue", 0
 
 values_dialog db "Please enter the following values", 0
 
@@ -144,11 +144,8 @@ main_start:
 
     ; copy username from buffer
     mov username_length, cl
-    lea edx, username
-    call copy_buffer_to
-    mov eax, 0
-    mov al, username_length
-    mov username[eax], 0
+    mov buffer[ecx], 0
+    invoke str_copy, offset buffer, offset username
 
     ; open and read account database
     lea edx, account_filename
@@ -171,8 +168,8 @@ find_username:
     mov ecx, 0
     mov cl, username_length
     .if eax == ecx
-        lea edx, username
-        call buffer_cmp
+        mov buffer[eax], 0
+        invoke str_compare, offset buffer, offset username
         je login
     .endif
 
@@ -200,8 +197,8 @@ register:
 
     ; copy password from buffer
     mov password_length, cl
-    lea edx, password
-    call copy_buffer_to
+    mov buffer[ecx], 0
+    invoke str_copy, offset buffer, offset password
 
     ; close account database if it exists
     mov eax, account_file.bf_handle
@@ -284,9 +281,8 @@ login:
 
     ; copy password from buffer
     mov password_length, al
-    lea edx, password
-    mov ecx, eax
-    call copy_buffer_to
+    mov buffer[eax], 0
+    invoke str_copy, offset buffer, offset password
 
     ; close database
     mov eax, account_file.bf_handle
@@ -324,8 +320,8 @@ login_attempt:
     mov ecx, 0
     mov cl, password_length
     .if eax == ecx
-        lea edx, password
-        call buffer_cmp
+        mov buffer[eax], 0
+        invoke str_compare, offset buffer, offset password
         je menu
     .endif
 
@@ -367,25 +363,27 @@ menu_loop:
     call writestring
     call crlf
     loop menu_loop
-
-    ; ask for option selection
     call crlf
-    .if input_validity == INPUT_OUT_OF_RANGE
-        lea edx, menu_input_out_of_range
+
+    ; check for errors
+    .if input_validity != VALID_INPUT
+        lea edx, menu_invalid_input
         call writestring
         call crlf
-        mov input_validity, VALID_INPUT
     .endif
-    mov eax, 0
+    ; ask for option selection
     lea edx, option_dialog
-    call read_nzpi
-    jz menu
-
-    ; check for invalid input
-    cmp eax, lengthof options
-    mov input_validity, INPUT_OUT_OF_RANGE
-    ja menu
-    mov eax, [options + eax * type options - type options]
+    call writestring
+    call readchar
+    ; check input validity
+    .if al < '1' || al > '0' + lengthof options
+        mov input_validity, INVALID_INPUT
+        jmp menu
+    .endif
+    mov edx, 0
+    mov dl, al
+    sub dl, '1'
+    mov eax, [options + edx * type options]
     mov selected_option, eax
     mov input_validity, VALID_INPUT
 option_selected:
@@ -636,7 +634,7 @@ wait_input:
     lea edx, wait_dialog
     call writestring
     call crlf
-    call read_string_with_buffer
+    call readchar
     mov input_validity, VALID_INPUT ; input_validity should be VALID_INPUT but just to be safe
     jmp menu
 main_end:
@@ -998,46 +996,6 @@ read_nzpf proc
         ret
     .endif
 read_nzpf endp
-
-; copy buffer to another buffer
-; edx = offset of the target buffer
-; ecx = number of bytes to copy
-; overwrite al
-copy_buffer_to proc
-    push esi
-    mov eax, esi
-    mov esi, 0
-copy_loop:
-    mov al, buffer[esi]
-    mov [edx + esi], al
-    inc esi
-    loop copy_loop
-    pop esi
-    ret
-copy_buffer_to endp
-
-; compare string to buffer
-; edx = offset of the string to be compared to
-; ecx = number of bytes to compare
-; overwrite al, ecx
-; set flags same as cmp
-buffer_cmp proc
-    push esi
-    mov esi, 0
-buffer_cmp_loop:
-    mov al, [edx + esi]
-    cmp al, buffer[esi]
-    ; jump if different byte
-    jne buffer_cmp_end
-    inc esi
-    loop buffer_cmp_loop
-    dec esi
-buffer_cmp_end:
-    ; set flags again
-    cmp al, buffer[esi]
-    pop esi
-    ret
-buffer_cmp endp
 
 ; print integer with double digits (add 0 to integer less than 10)
 ; eax = integer
