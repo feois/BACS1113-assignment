@@ -1,19 +1,29 @@
 include irvine32.inc
 
+ReadConsoleOutputCharacterA proto,
+    hConsoleOutput: handle,
+    lpCharacter: ptr byte,
+    nLength: dword,
+    dwReadCoord: coord,
+    lpNumberOfCharsRead: PTR dword
+
 .data
 ASCII_TAB = 9
 ASCII_NEWLINE = 10
 TAB_OFFSET = 2
 
+console_info console_screen_buffer_info <>
+stdout_handle handle ?
 datetime systemtime <>
 month_str db "JanFebMarAprMayJunJulAugSepOctNovDec"
+system_logo db "Super Banking Calculator", ASCII_TAB, 0
 
 ; string buffer
 BUFFER_LENGTH = 255
 buffer db BUFFER_LENGTH + 1 dup (?)
 
 bufferedfile struct
-    bf_handle dword ?
+    bf_handle handle ?
     bf_buffer byte BUFFER_LENGTH dup (?)
     bf_len byte 0
 bufferedfile ends
@@ -24,7 +34,8 @@ float_hundred real4 100.0
 ; generic variable used to store float (in IEEE single-precision format) temporarily
 float_register real4 ?
 
-system_logo db "Super Banking Calculator", ASCII_TAB, 0
+handle_register1 handle ?
+handle_register2 handle ?
 
 account_filename db "accounts", 0
 account_backup db "accounts.bak", 0
@@ -74,7 +85,27 @@ options dd offset option_loan, offset option_interest, offset option_debt, offse
 option_dialog db "Press 1~", '0' + lengthof options, " for the respective option: ", 0
 selected_option dd ?
 
-wait_dialog db "Press any key to continue", 0
+summary_save_dialog db "Do you want to save the result of this calculation?", 0
+summary_save_yes_dialog db "Press y/Y to save and return to main menu", 0
+summary_save_no_dialog db "Press n/N to return to main menu without saving", 0
+summary_print_dialog db "Do you want to print the report to a file?", 0
+summary_print_yes_dialog db "Press y/Y to print", 0
+summary_print_no_dialog db "Press n/N to return to main menu", 0
+summary_print_file_dialog db "Save to file (empty input to cancel): ", 0
+
+summary_loan_dialog db "Loan EMI (Estimated Monthly Instalment):", 0
+summary_interest_dialog db "Compound interest:", 0
+summary_debt_dialog db "Debt-to-Interest ratio", 0
+summary_empty_dialog db "No data", 0
+summary_wait_dialog db "Press any key to return to main menu", 0
+summary_print_success_dialog db "Report was successfully printed!", 0
+summary_print_failure_dialog db "Report failed to be printed!", 0
+
+SUMMARY_STATE_NONE = 0
+SUMMARY_STATE_PRINT_ASK_FILENAME = 1
+SUMMARY_STATE_PRINT_PROCESS = 2
+SUMMARY_STATE_PRINT_SUCCESS = 3
+SUMMARY_STATE_PRINT_FAILURE = 4
 
 values_dialog db "Please enter the following values", 0
 
@@ -100,7 +131,7 @@ interest_dialog db "Final amount: RM ", 0
 
 ;HOCHEEHIN
 debt_payment_dialog db      "Total monthly debt payment: RM ", 0
-income_dialog       db      "Gross monthly income: RM ", 0
+gross_income_dialog       db      "Gross monthly income: RM ", 0
 dti_result_dialog   db      "Debt-to-Income Ratio (rounded): ", 0
 dti_approve         db      "Loan approved (DTI <= 36%)", 0
 dti_reject          db      "Loan rejected (DTI > 36%)", 0
@@ -120,11 +151,19 @@ summary_interest real4 0.0
 summary_debt_payment dd 0
 summary_gross_income dd 0
 summary_dti real4 0.0
-summary_debt_decision db 0
+summary_debt_decision db 0 ; 0 = approved
+summary_state db SUMMARY_STATE_NONE
+
+coordinate coord <0, 0>
+char_read dd 0
 
 .code
 main proc
 main_start:
+    invoke getstdhandle, STD_OUTPUT_HANDLE
+    mov stdout_handle, eax
+    invoke getconsolescreenbufferinfo, stdout_handle, offset console_info
+
     ; print login screen
     mov attempts, MAX_ATTEMPTS
     call clear
@@ -388,9 +427,14 @@ menu_loop:
     mov input_validity, VALID_INPUT
 option_selected:
     call clear
+    mov ecx, TAB_OFFSET
+    test ecx, ecx
+    jz tab_offset_loop_end
     mov al, ASCII_TAB
+tab_offset_loop:
     call writechar
-    call writechar
+    loop tab_offset_loop
+tab_offset_loop_end:
     mov edx, selected_option
     call writestring
     call crlf
@@ -403,6 +447,8 @@ option_selected:
     je interest
     cmp edx, offset option_debt
     je debt
+    cmp edx, offset option_summary
+    je summary
     cmp edx, offset option_logout
     je main_start
     cmp edx, offset option_exit
@@ -473,25 +519,25 @@ loan:
     lea edx, loan_dialog
     call writestring
     mov eax, float_register
+    push eax
     call print_float
     call crlf
 
-    ; save summary
+    call ask_summary_save
+    jz loan_reset
     mov eax, loan_p
     mov summary_loan_p, eax
     mov eax, loan_r
     mov summary_loan_r, eax
     mov eax, loan_n
     mov summary_loan_n, eax
-    mov eax, float_register
+    pop eax
     mov summary_loan, eax
-
-    ; reset data
+loan_reset:
     mov loan_p, 0
     mov loan_r, 0
     mov loan_n, 0
-
-    jmp wait_input
+    jmp menu
 interest:
     lea edx, values_dialog
     call writestring
@@ -551,9 +597,12 @@ interest:
     lea edx, interest_dialog
     call writestring
     mov eax, float_register
+    push eax
     call print_float
     call crlf
 
+    call ask_summary_save
+    jz interest_reset
     mov eax, interest_p
     mov summary_interest_p, eax
     mov eax, interest_r
@@ -562,14 +611,14 @@ interest:
     mov summary_interest_n, eax
     mov eax, interest_t
     mov summary_interest_t, eax
-    mov eax, float_register
+    pop eax
     mov summary_interest, eax
-
+interest_reset:
     mov interest_p, 0
     mov interest_r, 0
     mov interest_n, 0
     mov interest_t, 0
-    jmp wait_input
+    jmp menu
 
 ;HOCHEEHIN
 debt:
@@ -585,7 +634,7 @@ debt:
     call crlf
 
     mov eax, gross_income
-    lea edx, income_dialog
+    lea edx, gross_income_dialog
     call read_nzpi
     mov gross_income, eax
     jnc option_selected
@@ -600,6 +649,7 @@ debt:
     lea edx, dti_result_dialog
     call writestring
     mov eax, float_register
+    push eax
     call print_float
     mov al, '%'
     call writechar
@@ -620,22 +670,245 @@ print_loan_decision:
     call writestring
     call crlf
 
+    call ask_summary_save
+    jz debt_reset
     mov eax, debt_payment
     mov summary_debt_payment, eax
     mov eax, gross_income
     mov summary_gross_income, eax
-    mov eax, float_register
+    pop eax
     mov summary_dti, eax
-
+debt_reset:
     mov debt_payment, 0
     mov gross_income, 0
-wait_input:
-    call crlf
-    lea edx, wait_dialog
+    jmp menu
+summary:
+    .if summary_loan != 0
+        lea edx, summary_loan_dialog
+        call writestring
+        call crlf
+
+        mov al, ASCII_TAB
+        call writechar
+        lea edx, loan_p_dialog
+        call writestring
+        mov eax, summary_loan_p
+        call writedec
+        call crlf
+
+        mov al, ASCII_TAB
+        call writechar
+        lea edx, loan_r_dialog
+        call writestring
+        mov eax, summary_loan_r
+        call print_float
+        mov al, '%'
+        call writechar
+        call crlf
+
+        mov al, ASCII_TAB
+        call writechar
+        lea edx, loan_n_dialog
+        call writestring
+        mov eax, summary_loan_n
+        call writedec
+        call crlf
+
+        mov al, ASCII_TAB
+        call writechar
+        lea edx, summary_loan_dialog
+        call writestring
+        mov al, ' '
+        call writechar
+        mov al, 'R'
+        call writechar
+        mov al, 'M'
+        call writechar
+        mov al, ' '
+        call writechar
+        mov eax, summary_loan
+        call print_float
+        call crlf
+        call crlf
+    .endif
+
+    .if summary_interest != 0
+        lea edx, summary_interest_dialog
+        call writestring
+        call crlf
+
+        mov al, ASCII_TAB
+        call writechar
+        lea edx, interest_p_dialog
+        call writestring
+        mov eax, summary_interest_p
+        call writedec
+        call crlf
+
+        mov al, ASCII_TAB
+        call writechar
+        lea edx, interest_r_dialog
+        call writestring
+        mov eax, summary_interest_r
+        call print_float
+        mov al, '%'
+        call writechar
+        call crlf
+
+        mov al, ASCII_TAB
+        call writechar
+        lea edx, interest_n_dialog
+        call writestring
+        mov eax, summary_interest_n
+        call writedec
+        call crlf
+
+        mov al, ASCII_TAB
+        call writechar
+        lea edx, interest_t_dialog
+        call writestring
+        mov eax, summary_interest_t
+        call print_float
+        call crlf
+
+        mov al, ASCII_TAB
+        call writechar
+        lea edx, summary_interest_dialog
+        call writestring
+        mov al, ' '
+        call writechar
+        mov al, 'R'
+        call writechar
+        mov al, 'M'
+        call writechar
+        mov al, ' '
+        call writechar
+        mov eax, summary_interest
+        call print_float
+        call crlf
+        call crlf
+    .endif
+
+    .if summary_dti != 0
+        lea edx, summary_debt_dialog
+        call writestring
+        call crlf
+
+        mov al, ASCII_TAB
+        call writechar
+        lea edx, debt_payment_dialog
+        call writestring
+        mov eax, summary_debt_payment
+        call writedec
+        call crlf
+
+        mov al, ASCII_TAB
+        call writechar
+        lea edx, gross_income_dialog
+        call writestring
+        mov eax, summary_gross_income
+        call writedec
+        call crlf
+
+        mov al, ASCII_TAB
+        call writechar
+        lea edx, dti_result_dialog
+        call writestring
+        mov eax, summary_dti
+        call print_float
+        mov al, '%'
+        call writechar
+        call crlf
+
+        mov al, ASCII_TAB
+        call writechar
+        .if summary_debt_decision == 0
+            lea edx, dti_approve
+        .else
+            lea edx, dti_reject
+        .endif
+        call writestring
+        call crlf
+        call crlf
+    .endif
+
+    .if summary_state == SUMMARY_STATE_NONE
+        .if summary_loan == 0 && summary_interest == 0 && summary_dti == 0
+            lea edx, summary_empty_dialog
+            call writestring
+            call crlf
+            call crlf
+        .else
+            lea edx, summary_print_dialog
+            call writestring
+            call crlf
+            lea edx, summary_print_yes_dialog
+            call writestring
+            call crlf
+            lea edx, summary_print_no_dialog
+            call writestring
+            call crlf
+        ask_print_loop:
+            call readchar
+            .if al == 'y' || al == 'Y'
+                mov summary_state, SUMMARY_STATE_PRINT_ASK_FILENAME
+                jmp option_selected
+            .elseif al == 'n' || al == 'N'
+                jmp menu
+            .endif
+            jmp ask_print_loop
+        .endif
+    .elseif summary_state == SUMMARY_STATE_PRINT_ASK_FILENAME
+        lea edx, summary_print_file_dialog
+        call writestring
+        call read_string_with_buffer
+        mov buffer[ecx], 0
+        lea edx, buffer
+        call createoutputfile
+        mov handle_register1, eax
+        .if eax == INVALID_HANDLE_VALUE
+            mov summary_state, SUMMARY_STATE_PRINT_FAILURE
+            jmp option_selected
+        .endif
+        mov summary_state, SUMMARY_STATE_PRINT_PROCESS
+        jmp option_selected
+    .elseif summary_state == SUMMARY_STATE_PRINT_PROCESS
+        mov coordinate.x, 0
+        mov coordinate.y, 0
+    read_screen:
+        call read_console
+        jz read_screen_end
+        jc read_screen_line
+        mov eax, handle_register1
+        lea edx, buffer
+        call writetofile
+        jmp read_screen
+    read_screen_line:
+        mov eax, handle_register1
+        lea edx, buffer
+        mov buffer[ecx], ASCII_NEWLINE
+        inc ecx
+        call writetofile
+        jmp read_screen
+    read_screen_end:
+        mov eax, handle_register1
+        call closefile
+        mov summary_state, SUMMARY_STATE_PRINT_SUCCESS
+        jmp option_selected
+    .elseif summary_state == SUMMARY_STATE_PRINT_SUCCESS
+        lea edx, summary_print_success_dialog
+        call writestring
+        call crlf
+    .elseif summary_state == SUMMARY_STATE_PRINT_FAILURE
+        lea edx, summary_print_failure_dialog
+        call writestring
+        call crlf
+    .endif
+
+    lea edx, summary_wait_dialog
     call writestring
     call crlf
     call readchar
-    mov input_validity, VALID_INPUT ; input_validity should be VALID_INPUT but just to be safe
     jmp menu
 main_end:
     call clear
@@ -845,6 +1118,34 @@ read_string_with_buffer proc
     ret
 read_string_with_buffer endp
 
+; read console screen into the buffer
+; coordinate = coord to start to read from
+; overwrite eax
+; set coordinate = coord to continue reading
+; set ecx = number of characters read
+; set ZF if no character read
+; set CF if a line is completely read
+read_console proc
+    mov eax, 0
+    mov ax, console_info.dwSize.x
+    sub ax, coordinate.x
+    .if ax > BUFFER_LENGTH
+        invoke readconsoleoutputcharactera, stdout_handle, offset buffer, BUFFER_LENGTH, coordinate, offset char_read
+        add coordinate.x, BUFFER_LENGTH
+        mov ecx, char_read
+        test ecx, ecx
+        clc
+    .else
+        invoke readconsoleoutputcharactera, stdout_handle, offset buffer, eax, coordinate, offset char_read
+        mov coordinate.x, 0
+        inc coordinate.y
+        mov ecx, char_read
+        test ecx, ecx
+        stc
+    .endif
+    ret
+read_console endp
+
 ; read a non-zero positive integer
 ; eax = current existing nzpi
 ; edx = string to display
@@ -996,6 +1297,39 @@ read_nzpf proc
         ret
     .endif
 read_nzpf endp
+
+; repeatedly asks yes or no
+; overwrite al
+; set ZF if y or Y is pressed
+; clear ZF if n or N is pressed
+ask_yes_no proc
+ask_loop:
+    call readchar
+    .if al == 'y' || al == 'Y'
+        test al, al ; clear ZF
+        ret
+    .elseif al == 'n' || al == 'N'
+        xor al, al ; set zf
+        ret
+    .endif
+    jmp ask_loop
+ask_yes_no endp
+
+; asks to save summary or not
+ask_summary_save proc
+    call crlf
+    lea edx, summary_save_dialog
+    call writestring
+    call crlf
+    lea edx, summary_save_yes_dialog
+    call writestring
+    call crlf
+    lea edx, summary_save_no_dialog
+    call writestring
+    call crlf
+    call ask_yes_no
+    ret
+ask_summary_save endp
 
 ; print integer with double digits (add 0 to integer less than 10)
 ; eax = integer
