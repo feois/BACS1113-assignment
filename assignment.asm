@@ -909,6 +909,7 @@ summary:
     call writestring
     call crlf
     call readchar
+    mov summary_state, SUMMARY_STATE_NONE
     jmp menu
 main_end:
     call clear
