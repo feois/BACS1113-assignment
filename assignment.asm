@@ -19,14 +19,8 @@ month_str db "JanFebMarAprMayJunJulAugSepOctNovDec"
 system_logo db "Super Banking Calculator", ASCII_TAB, 0
 
 ; string buffer
-BUFFER_LENGTH = 255
+BUFFER_LENGTH = 10000
 buffer db BUFFER_LENGTH + 1 dup (?)
-
-bufferedfile struct
-    bf_handle handle ?
-    bf_buffer byte BUFFER_LENGTH dup (?)
-    bf_len byte 0
-bufferedfile ends
 
 ; constant
 float_ten real4 10.0
@@ -34,16 +28,16 @@ float_hundred real4 100.0
 ; generic variable used to store float (in IEEE single-precision format) temporarily
 float_register real4 ?
 
-handle_register1 handle ?
-handle_register2 handle ?
+file_register handle ?
 
 account_filename db "accounts", 0
 account_backup db "accounts.bak", 0
-account_file bufferedfile <?>
+account_buffer db BUFFER_LENGTH dup (?)
+account_buffer_len dd 0
 username db BUFFER_LENGTH dup (?), 0
-username_length db ?
+username_length dd ?
 password db BUFFER_LENGTH dup (?), 0
-password_length db ?
+password_length dd ?
 MAX_ATTEMPTS = 3
 attempts dd ?
 
@@ -182,7 +176,7 @@ main_start:
     jz main_end
 
     ; copy username from buffer
-    mov username_length, cl
+    mov username_length, ecx
     mov buffer[ecx], 0
     invoke str_copy, offset buffer, offset username
 
@@ -193,31 +187,35 @@ main_start:
     ; check if file not exist
     cmp eax, INVALID_HANDLE_VALUE
     je register
-    mov account_file.bf_handle, eax
+    mov file_register, eax
 find_username:
     ; read a line from account database
-    lea edx, account_file
+    mov eax, file_register
+    lea edx, account_buffer
+    mov ecx, account_buffer_len
     call file_read_line_fit_buffer
+    mov account_buffer_len, ecx
     jc invalid_account_file
     jo invalid_account_file
     jz register ; reach the end of file already
     dec eax ; ignore new line
 
     ; check if line is the username we are looking for
-    mov ecx, 0
-    mov cl, username_length
-    .if eax == ecx
+    .if eax == username_length
         mov buffer[eax], 0
         invoke str_compare, offset buffer, offset username
         je login
     .endif
 
     ; read another line to skip the password
-    lea edx, account_file
+    mov eax, file_register
+    lea edx, account_buffer
+    mov ecx, account_buffer_len
     call file_read_line_fit_buffer
+    mov account_buffer_len, ecx
     jmp find_username
 invalid_account_file:
-    mov eax, account_file.bf_handle
+    mov eax, file_register
     call closefile
     call clear
     lea edx, invalid_account_file_dialog
@@ -235,96 +233,61 @@ register:
     jz main_end
 
     ; copy password from buffer
-    mov password_length, cl
+    mov password_length, ecx
     mov buffer[ecx], 0
     invoke str_copy, offset buffer, offset password
 
     ; close account database if it exists
-    mov eax, account_file.bf_handle
+    mov eax, file_register
     .if eax != INVALID_HANDLE_VALUE
         call closefile
     .endif
 
-    ; reopen account database
-    lea edx, account_filename
-    call openinputfile
-    .if eax == INVALID_HANDLE_VALUE ; account database does not exist
-        lea edx, account_filename
-        call createoutputfile
-        mov account_file.bf_handle, eax
-    .else
-        mov account_file.bf_handle, eax
-
-        ; copy to backup
-        lea edx, account_backup
-        call createoutputfile
-        push eax
-        mov edx, account_file.bf_handle
-        call copy_file
-        pop eax
-        call closefile
-        mov eax, account_file.bf_handle
-        call closefile
-
-        ; copy from backup
-        lea edx, account_backup
-        call openinputfile
-        push eax
-        lea edx, account_filename
-        call createoutputfile
-        mov account_file.bf_handle, eax
-        pop edx
-        push edx
-        call copy_file
-
-        ; close backup database
-        pop eax
-        call closefile
-    .endif
+    ; append file
+    invoke createfile, offset account_filename, FILE_APPEND_DATA, FILE_SHARE_READ, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL
+    mov file_register, eax
 
     ; write username
-    mov eax, account_file.bf_handle
     lea edx, username
-    mov ecx, 0
-    mov cl, username_length
+    mov ecx, username_length
     mov username[ecx], ASCII_NEWLINE
     inc ecx
     call writetofile
-    mov ecx, 0
-    mov cl, username_length
+    mov ecx, username_length
     mov username[ecx], 0
 
     ; write password
-    mov eax, account_file.bf_handle
+    mov eax, file_register
     lea edx, password
-    mov ecx, 0
-    mov cl, password_length
+    mov ecx, password_length
     mov password[ecx], ASCII_NEWLINE
     inc ecx
     call writetofile
-    mov ecx, 0
-    mov cl, username_length
+    mov ecx, password_length
     mov password[ecx], 0
 
     ; close file
-    mov eax, account_file.bf_handle
+    mov eax, file_register
     call closefile
     jmp menu
 login:
     ; read the password
-    lea edx, account_file
+    mov eax, file_register
+    lea edx, account_buffer
+    mov ecx, account_buffer_len
     call file_read_line_fit_buffer
+    mov account_buffer_len, ecx
     jc invalid_account_file
     jz invalid_account_file
     dec eax ; ignore new line
 
     ; copy password from buffer
-    mov password_length, al
+    mov password_length, eax
     mov buffer[eax], 0
     invoke str_copy, offset buffer, offset password
 
     ; close database
-    mov eax, account_file.bf_handle
+    mov eax, file_register
     call closefile
 login_attempt:
     ; print login screen
@@ -356,9 +319,7 @@ login_attempt:
     call read_string_with_buffer
 
     ; check password
-    mov ecx, 0
-    mov cl, password_length
-    .if eax == ecx
+    .if eax == password_length
         mov buffer[eax], 0
         invoke str_compare, offset buffer, offset password
         je menu
@@ -865,7 +826,7 @@ summary:
         mov buffer[ecx], 0
         lea edx, buffer
         call createoutputfile
-        mov handle_register1, eax
+        mov file_register, eax
         .if eax == INVALID_HANDLE_VALUE
             mov summary_state, SUMMARY_STATE_PRINT_FAILURE
             jmp option_selected
@@ -879,19 +840,19 @@ summary:
         call read_console
         jz read_screen_end
         jc read_screen_line
-        mov eax, handle_register1
+        mov eax, file_register
         lea edx, buffer
         call writetofile
         jmp read_screen
     read_screen_line:
-        mov eax, handle_register1
+        mov eax, file_register
         lea edx, buffer
         mov buffer[ecx], ASCII_NEWLINE
         inc ecx
         call writetofile
         jmp read_screen
     read_screen_end:
-        mov eax, handle_register1
+        mov eax, file_register
         call closefile
         mov summary_state, SUMMARY_STATE_PRINT_SUCCESS
         jmp option_selected
@@ -980,41 +941,43 @@ clear proc
     ret
 clear endp
 
-; read line (string ends with ASCII_NEWLINE) to the buffer from a bufferedfile
-; edx = offset of bufferedfile
-; overwrite ecx
+; read line (string ends with ASCII_NEWLINE) to the buffer
+; eax = file handle
+; cl = length of file buffer
+; edx = offset of file buffer
 ; set eax = number of characters read
+; set ecx = new length of file buffer
 ; set OF if line does not end with new line and this is the last line
 ; set CF if line is longer than buffer (call again to read rest of the line)
 ; set ZF if nothing to read
 file_read_line_to_buffer proc
+    local file_handle: handle, file_buffer: ptr byte, file_len: dword
     push esi
     push edi
-    push edx
-    assume edx: ptr bufferedfile
+
+    mov file_handle, eax
+    mov file_buffer, edx
+    mov file_len, ecx
 
     ; copy to buffer
     mov esi, 0
-    mov ecx, 0
-    mov cl, [edx].bf_len
-    test cl, cl
-    jz clear_bufferedfile
+    test ecx, ecx
+    jz file_buffer_empty
 file_copy_to_buffer:
-    mov al, [edx].bf_buffer[esi]
+    mov al, [edx + esi]
     mov buffer[esi], al
     inc esi
     loop file_copy_to_buffer
 
-clear_bufferedfile:
-    mov [edx].bf_len, 0
+file_buffer_empty:
+    mov file_len, 0
 
     ; read from file
-    mov eax, [edx].bf_handle
+    mov eax, file_handle
     mov ecx, BUFFER_LENGTH
     sub ecx, esi
     lea edx, buffer[esi]
     call readfromfile
-    pop edx
 
     ; check for new line
     mov ecx, esi
@@ -1044,19 +1007,20 @@ buffer_find_new_line:
     .endif
     jmp file_read_line_end
 
-    ; copy to bufferedfile
+    ; copy to file buffer
 buffer_new_line_found:
     inc esi
     pop ecx
     push esi
     mov edi, 0
     sub ecx, esi
-    mov [edx].bf_len, cl
+    mov file_len, ecx
 
     .if ecx > 0
+        mov edx, file_buffer
     file_copy_from_buffer:
         mov al, buffer[esi]
-        mov [edx].bf_buffer[edi], al
+        mov [edx + edi], al
         inc edi
         inc esi
         loop file_copy_from_buffer
@@ -1067,6 +1031,7 @@ buffer_new_line_found:
 file_read_line_end:
     pop edi
     pop esi
+    mov ecx, file_len
     ret
 file_read_line_to_buffer endp
 
@@ -1082,29 +1047,6 @@ file_cf:
     stc
     ret
 file_read_line_fit_buffer endp
-
-; eax = handle of the file to write to
-; edx = handle of the file to read from
-copy_file proc
-    local from, to
-    mov from, edx
-    mov to, eax
-    mov eax, edx
-    mov ecx, BUFFER_LENGTH
-    lea edx, buffer
-    call readfromfile
-    .while eax != 0
-        lea edx, buffer
-        mov ecx, eax
-        mov eax, to
-        call writetofile
-        mov eax, from
-        mov ecx, BUFFER_LENGTH
-        lea edx, buffer
-        call readfromfile
-    .endw
-    ret
-copy_file endp
 
 ; read string into the buffer
 ; overwrite eax, edx
