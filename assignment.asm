@@ -1,11 +1,11 @@
 include irvine32.inc
 
 ReadConsoleOutputCharacterA PROTO,
-    hConsoleOutput: HANDLE,
-    lpCharacter: PTR BYTE,
-    nLength: DWORD,
-    dwReadCoord: COORD,
-    lpNumberOfCharsRead: PTR DWORD
+    hConsoleOutput:         HANDLE,
+    lpCharacter:            PTR BYTE,
+    nLength:                DWORD,
+    dwReadCoord:            COORD,
+    lpNumberOfCharsRead:    PTR DWORD
 
 .data
 ASCII_TAB       = 9
@@ -956,7 +956,7 @@ Clear_And_Print_Header endp
 ; set CF if line is longer than buffer (call again to read rest of the line)
 ; set ZF if nothing to read
 File_Read_Line_To_Buffer proc
-    local file_handle: handle, file_buffer: ptr byte, file_len: dword
+    local file_handle: HANDLE, file_buffer: PTR BYTE, file_len: DWORD
     push esi
     push edi
 
