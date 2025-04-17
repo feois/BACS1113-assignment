@@ -8,124 +8,127 @@ ReadConsoleOutputCharacterA proto,
     lpNumberOfCharsRead: PTR dword
 
 .data
-ASCII_TAB = 9
-ASCII_NEWLINE = 10
-TAB_OFFSET = 2
+ASCII_TAB       = 9
+ASCII_NEWLINE   = 10
+TAB_OFFSET      = 2
 
-console_info console_screen_buffer_info <>
-stdout_handle handle ?
-datetime systemtime <>
-month_str db "JanFebMarAprMayJunJulAugSepOctNovDec"
-system_logo db "Super Banking Calculator", ASCII_TAB, 0
+console_info    console_screen_buffer_info  <>
+stdout_handle   handle                      ?
+datetime        systemtime                  <>
+month_str       db                          "JanFebMarAprMayJunJulAugSepOctNovDec"
+system_logo     db                          "Super Banking Calculator", ASCII_TAB, 0
 
 ; string buffer
-BUFFER_LENGTH = 10000
-buffer db BUFFER_LENGTH + 1 dup (?)
+BUFFER_LENGTH   = 10000
+buffer          db BUFFER_LENGTH + 1 dup (?)
 
 ; constant
-float_ten real4 10.0
-float_hundred real4 100.0
+float_ten       real4 10.0
+float_hundred   real4 100.0
 ; generic variable used to store float (in IEEE single-precision format) temporarily
-float_register real4 ?
+float_register  real4 ?
 
-file_register handle ?
+file_register   handle ?
 
-account_filename db "accounts", 0
-account_backup db "accounts.bak", 0
-account_buffer db BUFFER_LENGTH dup (?)
-account_buffer_len dd 0
-username db BUFFER_LENGTH dup (?), 0
-username_length dd ?
-password db BUFFER_LENGTH dup (?), 0
-password_length dd ?
-MAX_ATTEMPTS = 3
-attempts dd ?
+account_filename    db "accounts", 0
+account_backup      db "accounts.bak", 0
+account_buffer      db BUFFER_LENGTH dup (?)
+account_buffer_len  dd 0
+username            db BUFFER_LENGTH dup (?), 0
+username_length     dd ?
+password            db BUFFER_LENGTH dup (?), 0
+password_length     dd ?
+MAX_ATTEMPTS        = 3
+attempts            dd ?
 
-login_dialog db TAB_OFFSET dup (ASCII_TAB), "Login/Register", 0
-cancel_dialog db "Enter empty input to exit", 0
-username_dialog db "Username: ", 0
-password_dialog db "Password: ", 0
-new_account_dialog db "This username does not exist, a new account will be created", 0
-attempt_dialog_1 db "You can only attempt 3 times! (", 0
-attempt_dialog_2 db " more times left)", 0
-attempt_fail_dialog db "You have been temporarily locked out of the system due to too many incorrect password attempts", 0
+login_dialog                db TAB_OFFSET dup (ASCII_TAB), "Login/Register", 0
+cancel_dialog               db "Enter empty input to exit", 0
+username_dialog             db "Username: ", 0
+password_dialog             db "Password: ", 0
+new_account_dialog          db "This username does not exist, a new account will be created", 0
+attempt_dialog_1            db "You can only attempt 3 times! (", 0
+attempt_dialog_2            db " more times left)", 0
+attempt_fail_dialog         db "You have been temporarily locked out of the system due to too many incorrect password attempts", 0
 invalid_account_file_dialog db "Error: Account database is invalid", 0
 
-VALID_INPUT = 0
-INVALID_INPUT = 1
-INPUT_EMPTY = 2
-INPUT_ZERO = 3
-INPUT_OVERFLOW = 4
-INPUT_OUT_OF_RANGE = 5
-input_validity db VALID_INPUT
-nzpi_invalid db "Invalid input! Please enter a non-zero positive integer", 0
-nzpi_empty db "Please enter a non-zero positive integer", 0
-nzpi_overflow db "Input too large!", 0
-nzpf_invalid db "Invalid input! Please enter a non-zero positive decimal", 0
-nzpf_empty db "Please enter a non-zero positive decimal", 0
-nzpf_overflow db "Input too large!", 0
-menu_invalid_input db "Invalid input!", 0
+VALID_INPUT         = 0
+INVALID_INPUT       = 1
+INPUT_EMPTY         = 2
+INPUT_ZERO          = 3
+INPUT_OVERFLOW      = 4
+INPUT_OUT_OF_RANGE  = 5
+input_validity      db VALID_INPUT
+nzpi_invalid        db "Invalid input! Please enter a non-zero positive integer", 0
+nzpi_empty          db "Please enter a non-zero positive integer", 0
+nzpi_overflow       db "Input too large!", 0
+nzpf_invalid        db "Invalid input! Please enter a non-zero positive decimal", 0
+nzpf_empty          db "Please enter a non-zero positive decimal", 0
+nzpf_overflow       db "Input too large!", 0
+menu_invalid_input  db "Invalid input!", 0
 
-menu_dialog db TAB_OFFSET dup (ASCII_TAB), "Main Menu", 0
-menu_username_dialog db "Currently logged in as: ", 0
+menu_dialog             db TAB_OFFSET dup (ASCII_TAB), "Main Menu", 0
+menu_username_dialog    db "Currently logged in as: ", 0
 
-option_loan db "Compute loan EMI (Estimated Monthly Instalment)", 0
+option_loan     db "Compute loan EMI (Estimated Monthly Instalment)", 0
 option_interest db "Compute compound interest", 0
-option_debt db "Compute Debt-to-Interest ratio", 0
-option_summary db "Summary Report", 0
-option_logout db "Log out", 0
-option_exit db "Exit", 0
-options dd offset option_loan, offset option_interest, offset option_debt, offset option_summary, offset option_logout, offset option_exit
-option_dialog db "Press 1~", '0' + lengthof options, " for the respective option: ", 0
+option_debt     db "Compute Debt-to-Interest ratio", 0
+option_summary  db "Summary Report", 0
+option_logout   db "Log out", 0
+option_exit     db "Exit", 0
+options         dd  offset option_loan,
+                    offset option_interest,
+                    offset option_debt,
+                    offset option_summary,
+                    offset option_logout,
+                    offset option_exit
+option_dialog   db "Press 1~", '0' + lengthof options, " for the respective option: ", 0
 selected_option dd ?
 
-summary_save_dialog db "Do you want to save the result of this calculation?", 0
-summary_save_yes_dialog db "Press y/Y to save and return to main menu", 0
-summary_save_no_dialog db "Press n/N to return to main menu without saving", 0
-summary_print_dialog db "Do you want to print the report to a file?", 0
-summary_print_yes_dialog db "Press y/Y to print", 0
-summary_print_no_dialog db "Press n/N to return to main menu", 0
-summary_print_file_dialog db "Save to file (empty input to cancel): ", 0
+summary_save_dialog         db "Do you want to save the result of this calculation?", 0
+summary_save_yes_dialog     db "Press y/Y to save and return to main menu", 0
+summary_save_no_dialog      db "Press n/N to return to main menu without saving", 0
+summary_print_dialog        db "Do you want to print the report to a file?", 0
+summary_print_yes_dialog    db "Press y/Y to print", 0
+summary_print_no_dialog     db "Press n/N to return to main menu", 0
+summary_print_file_dialog   db "Save to file (empty input to cancel): ", 0
 
-summary_loan_dialog db "Loan EMI (Estimated Monthly Instalment):", 0
-summary_interest_dialog db "Compound interest:", 0
-summary_debt_dialog db "Debt-to-Interest ratio", 0
-summary_empty_dialog db "No data", 0
-summary_wait_dialog db "Press any key to return to main menu", 0
-summary_print_success_dialog db "Report was successfully printed!", 0
-summary_print_failure_dialog db "Report failed to be printed!", 0
+summary_loan_dialog             db "Loan EMI (Estimated Monthly Instalment):", 0
+summary_interest_dialog         db "Compound interest:", 0
+summary_debt_dialog             db "Debt-to-Interest ratio", 0
+summary_empty_dialog            db "No data", 0
+summary_wait_dialog             db "Press any key to return to main menu", 0
+summary_print_success_dialog    db "Report was successfully printed!", 0
+summary_print_failure_dialog    db "Report failed to be printed!", 0
 
-SUMMARY_STATE_NONE = 0
-SUMMARY_STATE_PRINT_ASK_FILENAME = 1
-SUMMARY_STATE_PRINT_PROCESS = 2
-SUMMARY_STATE_PRINT_SUCCESS = 3
-SUMMARY_STATE_PRINT_FAILURE = 4
+SUMMARY_STATE_NONE                  = 0
+SUMMARY_STATE_PRINT_ASK_FILENAME    = 1
+SUMMARY_STATE_PRINT_PROCESS         = 2
+SUMMARY_STATE_PRINT_SUCCESS         = 3
+SUMMARY_STATE_PRINT_FAILURE         = 4
 
-values_dialog db "Please enter the following values", 0
+values_dialog   db "Please enter the following values", 0
 
-loan_p_dialog db "Principal: RM ", 0
-loan_r_dialog db "Monthly interest rate (in %): ", 0
-loan_n_dialog db "Number of payments: ", 0
-loan_p dd 0
-loan_r real4 0.0
-loan_n dd 0
-loan_dialog db "Estimated Monthly Instalment: RM ", 0
+loan_p_dialog   db      "Principal: RM ", 0
+loan_r_dialog   db      "Monthly interest rate (in %): ", 0
+loan_n_dialog   db      "Number of payments: ", 0
+loan_p          dd      0
+loan_r          real4   0.0
+loan_n          dd      0
+loan_dialog     db      "Estimated Monthly Instalment: RM ", 0
 
-exit_dialog db "Thank you for using this application", 0
-
-interest_p_dialog db "Principal: RM ", 0
-interest_r_dialog db "Annual interest rate (in %): ", 0
-interest_n_dialog db "Compounding frequency per year (e.g. 1: annually, 12: monthly, 52: weekly, 365: daily): ", 0
-interest_t_dialog db "Time in years: ", 0
-interest_p dd 0
-interest_r real4 0.0
-interest_n dd 0
-interest_t real4 0.0
-interest_dialog db "Final amount: RM ", 0
+interest_p_dialog   db      "Principal: RM ", 0
+interest_r_dialog   db      "Annual interest rate (in %): ", 0
+interest_n_dialog   db      "Compounding frequency per year (e.g. 1: annually, 12: monthly, 52: weekly, 365: daily): ", 0
+interest_t_dialog   db      "Time in years: ", 0
+interest_p          dd      0
+interest_r          real4   0.0
+interest_n          dd      0
+interest_t          real4   0.0
+interest_dialog     db      "Final amount: RM ", 0
 
 ;HOCHEEHIN
 debt_payment_dialog db      "Total monthly debt payment: RM ", 0
-gross_income_dialog       db      "Gross monthly income: RM ", 0
+gross_income_dialog db      "Gross monthly income: RM ", 0
 dti_result_dialog   db      "Debt-to-Income Ratio (rounded): ", 0
 dti_approve         db      "Loan approved (DTI <= 36%)", 0
 dti_reject          db      "Loan rejected (DTI > 36%)", 0
@@ -133,23 +136,25 @@ dti_threshold       real4   36.0
 debt_payment        dd      0
 gross_income        dd      0
 
-summary_loan_p dd 0
-summary_loan_r real4 0.0
-summary_loan_n dd 0
-summary_loan real4 0.0
-summary_interest_p dd 0
-summary_interest_r real4 0.0
-summary_interest_n dd 0
-summary_interest_t real4 0.0
-summary_interest real4 0.0
-summary_debt_payment dd 0
-summary_gross_income dd 0
-summary_dti real4 0.0
-summary_debt_decision db 0 ; 0 = approved
-summary_state db SUMMARY_STATE_NONE
+summary_loan_p          dd      0
+summary_loan_r          real4   0.0
+summary_loan_n          dd      0
+summary_loan            real4   0.0
+summary_interest_p      dd      0
+summary_interest_r      real4   0.0
+summary_interest_n      dd      0
+summary_interest_t      real4   0.0
+summary_interest        real4   0.0
+summary_debt_payment    dd      0
+summary_gross_income    dd      0
+summary_dti             real4   0.0
+summary_debt_decision   db      0 ; 0 = approved
+summary_state           db      SUMMARY_STATE_NONE
 
-coordinate coord <0, 0>
-char_read dd 0
+coordinate  coord   <0, 0>
+char_read   dd      0
+
+exit_dialog db  "Thank you for using this application", 0
 
 .code
 main proc
