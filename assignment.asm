@@ -157,7 +157,7 @@ char_read   DWORD   0
 exit_dialog BYTE    "Thank you for using this application", 0
 
 .code
-main proc
+main PROC
 main_start:
     invoke GetStdHandle, STD_OUTPUT_HANDLE
     mov stdout_handle, eax
@@ -885,10 +885,10 @@ main_end:
     call CrLf
 
     exit
-main endp
+main ENDP
 
 ; clear screen and print logo and time
-Clear_And_Print_Header proc
+Clear_And_Print_Header PROC
     push eax
     push edx
     mov eax, 0
@@ -944,7 +944,7 @@ Clear_And_Print_Header proc
     pop edx
     pop eax
     ret
-Clear_And_Print_Header endp
+Clear_And_Print_Header ENDP
 
 ; read line (string ends with ASCII_NEWLINE) to the buffer
 ; eax = file handle
@@ -955,7 +955,7 @@ Clear_And_Print_Header endp
 ; set OF if line does not end with new line and this is the last line
 ; set CF if line is longer than buffer (call again to read rest of the line)
 ; set ZF if nothing to read
-File_Read_Line_To_Buffer proc
+File_Read_Line_To_Buffer PROC
     local file_handle: HANDLE, file_buffer: PTR BYTE, file_len: DWORD
     push esi
     push edi
@@ -1038,11 +1038,11 @@ file_read_line_end:
     pop esi
     mov ecx, file_len
     ret
-File_Read_Line_To_Buffer endp
+File_Read_Line_To_Buffer ENDP
 
 ; same as File_Read_Line_To_Buffer but skip the whole line if it's longer than buffer
 ; set CF if line skipped
-File_Read_Line_To_Buffer_And_Skip_Line_If_Larger proc
+File_Read_Line_To_Buffer_And_Skip_Line_If_Larger PROC
     call File_Read_Line_To_Buffer
     jc file_cf
     ret
@@ -1051,20 +1051,20 @@ file_cf:
     jc file_cf
     stc
     ret
-File_Read_Line_To_Buffer_And_Skip_Line_If_Larger endp
+File_Read_Line_To_Buffer_And_Skip_Line_If_Larger ENDP
 
 ; read string into the buffer
 ; overwrite eax, edx
 ; set ecx = length of string (not including 0)
 ; set ZF if input is empty
-Read_String_To_Buffer proc
+Read_String_To_Buffer PROC
     lea edx, buffer
     mov ecx, BUFFER_LENGTH
     call ReadString
     mov ecx, eax
     test ecx, ecx
     ret
-Read_String_To_Buffer endp
+Read_String_To_Buffer ENDP
 
 ; read console screen into the buffer
 ; coordinate = coord to start to read from
@@ -1073,7 +1073,7 @@ Read_String_To_Buffer endp
 ; set ecx = number of characters read
 ; set ZF if no character read
 ; set CF if a line is completely read
-Read_Console_To_Buffer proc
+Read_Console_To_Buffer PROC
     mov eax, 0
     mov ax, console_info.dwSize.x
     sub ax, coordinate.x
@@ -1092,7 +1092,7 @@ Read_Console_To_Buffer proc
         stc
     .endif
     ret
-Read_Console_To_Buffer endp
+Read_Console_To_Buffer ENDP
 
 ; read a non-zero positive integer
 ; eax = current existing nzpi
@@ -1102,7 +1102,7 @@ Read_Console_To_Buffer endp
 ; set input_validity
 ; set CF if current nzpi is non-zero
 ; set ZF if input invalid
-Read_Nzpi proc
+Read_Nzpi PROC
     .if eax == 0
         .if input_validity != VALID_INPUT
             mov eax, edx
@@ -1173,7 +1173,7 @@ Read_Nzpi proc
         stc
         ret
     .endif
-Read_Nzpi endp
+Read_Nzpi ENDP
 
 ; read a non-zero positive float
 ; eax = current existing nzpf
@@ -1183,7 +1183,7 @@ Read_Nzpi endp
 ; set input_validity
 ; set CF if current nzpf is non-zero
 ; set ZF if input invalid
-Read_Nzpf proc
+Read_Nzpf PROC
     .if eax == 0
         .if input_validity != VALID_INPUT
             mov eax, edx
@@ -1244,13 +1244,13 @@ Read_Nzpf proc
         stc
         ret
     .endif
-Read_Nzpf endp
+Read_Nzpf ENDP
 
 ; repeatedly asks yes or no
 ; overwrite al
 ; set ZF if y or Y is pressed
 ; clear ZF if n or N is pressed
-Ask_Confirmation proc
+Ask_Confirmation PROC
 ask_loop:
     call ReadChar
     .if al == 'y' || al == 'Y'
@@ -1261,10 +1261,10 @@ ask_loop:
         ret
     .endif
     jmp ask_loop
-Ask_Confirmation endp
+Ask_Confirmation ENDP
 
 ; asks to save summary or not
-Ask_Save_Summary proc
+Ask_Save_Summary PROC
     call CrLf
     lea edx, summary_save_dialog
     call WriteString
@@ -1277,11 +1277,11 @@ Ask_Save_Summary proc
     call CrLf
     call Ask_Confirmation
     ret
-Ask_Save_Summary endp
+Ask_Save_Summary ENDP
 
 ; print integer with double digits (prepend 0 to integer less than 10)
 ; eax = integer
-Print_Two_Digits proc
+Print_Two_Digits PROC
     .if eax < 10
         mov ah, al
         mov al, '0'
@@ -1291,7 +1291,7 @@ Print_Two_Digits proc
     .endif
     call WriteDec
     ret
-Print_Two_Digits endp
+Print_Two_Digits ENDP
 
 ; convert string to float
 ; edx = string offset
@@ -1299,7 +1299,7 @@ Print_Two_Digits endp
 ; overwrite ecx
 ; set eax = float
 ; set CF if string is invalid
-Convert_String_To_Float proc
+Convert_String_To_Float PROC
     push esi
     push ecx
     ; index
@@ -1383,13 +1383,13 @@ decimal_error:
     pop ecx
     pop esi
     ret
-Convert_String_To_Float endp
+Convert_String_To_Float ENDP
 
 ; print float always with 2 digit precision (e.g. 1234.56, 1000.01)
 ; eax = float
 ; overwrite eax, cl
 ; set CF if float is larger than 2^32
-Print_Float proc
+Print_Float PROC
     .if eax == 0
         mov al, '0'
         call WriteChar
@@ -1476,6 +1476,6 @@ Print_Float_exponent:
 Print_Float_error:
     stc
     ret
-Print_Float endp
+Print_Float ENDP
 
 end main
