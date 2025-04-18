@@ -41,7 +41,7 @@ password_length     DWORD   ?
 MAX_ATTEMPTS        = 3
 attempts            DWORD   ?
 
-login_dialog                BYTE TAB_OFFSET dup (ASCII_TAB), "Login/Register", 0
+login_dialog                BYTE "Login/Register", 0
 cancel_dialog               BYTE "Enter empty input to exit", 0
 username_dialog             BYTE "Username: ", 0
 password_dialog             BYTE "Password: ", 0
@@ -66,7 +66,7 @@ nzpf_empty          BYTE "Please enter a non-zero positive decimal", 0
 nzpf_overflow       BYTE "Input too large!", 0
 menu_invalid_input  BYTE "Invalid input!", 0
 
-menu_dialog             BYTE TAB_OFFSET dup (ASCII_TAB), "Main Menu", 0
+menu_dialog             BYTE "Main Menu", 0
 menu_username_dialog    BYTE "Currently logged in as: ", 0
 
 option_loan     BYTE    "Compute loan EMI (Estimated Monthly Instalment)", 0
@@ -82,7 +82,6 @@ options         DWORD   offset option_loan,
                         offset option_logout,
                         offset option_exit
 option_dialog   BYTE    "Press 1~", '0' + lengthof options, " for the respective option: ", 0
-selected_option DWORD   ?
 
 summary_save_dialog         BYTE "Do you want to save the result of this calculation?", 0
 summary_save_yes_dialog     BYTE "Press y/Y to save and return to main menu", 0
@@ -158,18 +157,15 @@ exit_dialog BYTE    "Thank you for using this application", 0
 
 .code
 main PROC
-main_start:
     invoke GetStdHandle, STD_OUTPUT_HANDLE
     mov stdout_handle, eax
     invoke GetConsoleScreenBufferInfo, stdout_handle, offset console_info
 
+main_start:
     ; print login screen
     mov attempts, MAX_ATTEMPTS
-    call Clear_And_Print_Header
     lea edx, login_dialog
-    call WriteString
-    call CrLf
-    call CrLf
+    call Clear_And_Print_Header
     lea edx, cancel_dialog
     call WriteString
     call CrLf
@@ -222,6 +218,7 @@ find_username:
 invalid_account_file:
     mov eax, file_register
     call CloseFile
+    mov edx, 0
     call Clear_And_Print_Header
     lea edx, invalid_account_file_dialog
     call WriteString
@@ -296,11 +293,8 @@ login:
     call CloseFile
 login_attempt:
     ; print login screen
-    call Clear_And_Print_Header
     lea edx, login_dialog
-    call WriteString
-    call CrLf
-    call CrLf
+    call Clear_And_Print_Header
     lea edx, username_dialog
     call WriteString
     lea edx, username
@@ -335,18 +329,16 @@ login_attempt:
     jz login_fail
     jmp login_attempt
 login_fail:
+    mov edx, 0
     call Clear_And_Print_Header
     lea edx, attempt_fail_dialog
     call WriteString
     call CrLf
     exit
 menu:
-    call Clear_And_Print_Header
-    ; print dialog
     lea edx, menu_dialog
-    call WriteString
-    call CrLf
-    call CrLf
+    call Clear_And_Print_Header
+    ; print username
     lea edx, menu_username_dialog
     call WriteString
     lea edx, username
@@ -385,27 +377,11 @@ menu_loop:
         mov input_validity, INVALID_INPUT
         jmp menu
     .endif
-    mov edx, 0
-    mov dl, al
-    sub dl, '1'
-    mov eax, [options + edx * type options]
-    mov selected_option, eax
+    mov ecx, 0
+    mov cl, al
+    sub cl, '1'
+    mov edx, [options + ecx * type options]
     mov input_validity, VALID_INPUT
-option_selected:
-    call Clear_And_Print_Header
-    mov ecx, TAB_OFFSET
-    test ecx, ecx
-    jz tab_offset_loop_end
-    mov al, ASCII_TAB
-tab_offset_loop:
-    call WriteChar
-    loop tab_offset_loop
-tab_offset_loop_end:
-    mov edx, selected_option
-    call WriteString
-    call CrLf
-    call CrLf
-
     ; jump to function page
     cmp edx, offset option_loan
     je loan
@@ -420,6 +396,8 @@ tab_offset_loop_end:
     cmp edx, offset option_exit
     je main_end
 loan:
+    lea edx, option_loan
+    call Clear_And_Print_Header
     lea edx, values_dialog
     call WriteString
     call CrLf
@@ -429,7 +407,7 @@ loan:
     lea edx, loan_p_dialog
     call Read_Nzpi
     mov loan_p, eax
-    jnc option_selected
+    jnc loan
     call CrLf
 
     ; read rate
@@ -437,7 +415,7 @@ loan:
     lea edx, loan_r_dialog
     call Read_Nzpf
     mov loan_r, eax
-    jnc option_selected
+    jnc loan
     mov al, '%'
     call WriteChar
     call CrLf
@@ -447,7 +425,7 @@ loan:
     lea edx, loan_n_dialog
     call Read_Nzpi
     mov loan_n, eax
-    jnc option_selected
+    jnc loan
     call CrLf
 
     fld loan_r
@@ -505,6 +483,8 @@ loan_reset:
     mov loan_n, 0
     jmp menu
 interest:
+    lea edx, option_interest
+    call Clear_And_Print_Header
     lea edx, values_dialog
     call WriteString
     call CrLf
@@ -513,14 +493,14 @@ interest:
     lea edx, interest_p_dialog
     call Read_Nzpi
     mov interest_p, eax
-    jnc option_selected
+    jnc interest
     call CrLf
 
     mov eax, interest_r
     lea edx, interest_r_dialog
     call Read_Nzpf
     mov interest_r, eax
-    jnc option_selected
+    jnc interest
     mov al, '%'
     call WriteChar
     call CrLf
@@ -529,14 +509,14 @@ interest:
     lea edx, interest_n_dialog
     call Read_Nzpi
     mov interest_n, eax
-    jnc option_selected
+    jnc interest
     call CrLf
 
     mov eax, interest_t
     lea edx, interest_t_dialog
     call Read_Nzpf
     mov interest_t, eax
-    jnc option_selected
+    jnc interest
     call CrLf
 
     fild interest_n
@@ -588,6 +568,8 @@ interest_reset:
 
 ;HOCHEEHIN
 debt:
+    lea edx, option_debt
+    call Clear_And_Print_Header
     lea edx, values_dialog
     call WriteString
     call CrLf
@@ -596,14 +578,14 @@ debt:
     lea edx, debt_payment_dialog
     call Read_Nzpi
     mov debt_payment, eax
-    jnc option_selected
+    jnc debt
     call CrLf
 
     mov eax, gross_income
     lea edx, gross_income_dialog
     call Read_Nzpi
     mov gross_income, eax
-    jnc option_selected
+    jnc debt
     call CrLf
 
     fild debt_payment
@@ -649,6 +631,9 @@ debt_reset:
     mov gross_income, 0
     jmp menu
 summary:
+    lea edx, option_summary
+    call Clear_And_Print_Header
+
     .if summary_loan != 0
         lea edx, summary_loan_dialog
         call WriteString
@@ -818,7 +803,7 @@ summary:
             call ReadChar
             .if al == 'y' || al == 'Y'
                 mov summary_state, SUMMARY_STATE_PRINT_ASK_FILENAME
-                jmp option_selected
+                jmp summary
             .elseif al == 'n' || al == 'N'
                 jmp menu
             .endif
@@ -834,10 +819,10 @@ summary:
         mov file_register, eax
         .if eax == INVALID_HANDLE_VALUE
             mov summary_state, SUMMARY_STATE_PRINT_FAILURE
-            jmp option_selected
+            jmp summary
         .endif
         mov summary_state, SUMMARY_STATE_PRINT_PROCESS
-        jmp option_selected
+        jmp summary
     .elseif summary_state == SUMMARY_STATE_PRINT_PROCESS
         mov coordinate.x, 0
         mov coordinate.y, 0
@@ -860,7 +845,7 @@ summary:
         mov eax, file_register
         call CloseFile
         mov summary_state, SUMMARY_STATE_PRINT_SUCCESS
-        jmp option_selected
+        jmp summary
     .elseif summary_state == SUMMARY_STATE_PRINT_SUCCESS
         lea edx, summary_print_success_dialog
         call WriteString
@@ -878,6 +863,7 @@ summary:
     mov summary_state, SUMMARY_STATE_NONE
     jmp menu
 main_end:
+    mov edx, 0
     call Clear_And_Print_Header
 
     lea edx, exit_dialog
@@ -888,10 +874,10 @@ main_end:
 main ENDP
 
 ; clear screen and print logo and time
+; edx = header, 0 if no header
+; overwrite eax, ecx and edx
 Clear_And_Print_Header PROC
-    push eax
     push edx
-    mov eax, 0
     call ClrScr
     ; print logo
     lea edx, system_logo
@@ -941,8 +927,22 @@ Clear_And_Print_Header PROC
 
     call CrLf
     call CrLf
+
+    ; print header
     pop edx
-    pop eax
+    .if edx != 0
+        mov ecx, TAB_OFFSET
+        .if ecx > 0
+            mov al, ASCII_TAB
+        tab_offset_loop:
+            call WriteChar
+            loop tab_offset_loop
+        .endif
+        call WriteString
+        call CrLf
+        call CrLf
+    .endif
+
     ret
 Clear_And_Print_Header ENDP
 
