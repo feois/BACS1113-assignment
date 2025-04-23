@@ -84,6 +84,7 @@ options         DWORD   offset option_loan,
 option_dialog   BYTE    "Press 1~", '0' + lengthof options, " for the respective option: ", 0
 
 summary_save_dialog         BYTE "Do you want to save the result of this calculation?", 0
+summary_overwrite_dialog    BYTE "An existing calculation is already saved, do you want to save by overwriting the existing calculation?", 0
 summary_save_yes_dialog     BYTE "Press y/Y to save and return to main menu", 0
 summary_save_no_dialog      BYTE "Press n/N to return to main menu without saving", 0
 summary_print_dialog        BYTE "Do you want to print the report to a file?", 0
@@ -467,6 +468,7 @@ loan:
     call Print_Float
     call CrLf
 
+    mov eax, summary_loan
     call Ask_Save_Summary
     jz loan_reset
     mov eax, loan_p
@@ -547,6 +549,7 @@ interest:
     call Print_Float
     call CrLf
 
+    mov eax, summary_interest
     call Ask_Save_Summary
     jz interest_reset
     mov eax, interest_p
@@ -618,6 +621,7 @@ print_loan_decision:
     call WriteString
     call CrLf
 
+    mov eax, summary_dti
     call Ask_Save_Summary
     jz debt_reset
     mov eax, debt_payment
@@ -1266,7 +1270,11 @@ Ask_Confirmation ENDP
 ; asks to save summary or not
 Ask_Save_Summary PROC
     call CrLf
-    lea edx, summary_save_dialog
+    .if eax == 0
+        lea edx, summary_save_dialog
+    .else
+        lea edx, summary_overwrite_dialog
+    .endif
     call WriteString
     call CrLf
     lea edx, summary_save_yes_dialog
