@@ -60,10 +60,10 @@ INPUT_OUT_OF_RANGE  = 5
 input_validity      BYTE VALID_INPUT
 nzpi_invalid        BYTE "Invalid input! Please enter a non-zero positive integer", 0
 nzpi_empty          BYTE "Please enter a non-zero positive integer", 0
-nzpi_overflow       BYTE "Input too large!", 0
+nzpi_overflow       BYTE "Input too large! (Cannot be larger than 4294967295)", 0
 nzpf_invalid        BYTE "Invalid input! Please enter a non-zero positive decimal", 0
 nzpf_empty          BYTE "Please enter a non-zero positive decimal", 0
-nzpf_overflow       BYTE "Input too large!", 0
+nzpf_overflow       BYTE "Input too large! (Cannot be larger than 4294967167)", 0
 menu_invalid_input  BYTE "Invalid input!", 0
 
 menu_dialog             BYTE "Main Menu", 0
