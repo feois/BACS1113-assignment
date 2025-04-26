@@ -61,8 +61,8 @@ input_validity      BYTE VALID_INPUT
 nzpi_invalid        BYTE "Invalid input! Please enter a non-zero positive integer", 0
 nzpi_empty          BYTE "Please enter a non-zero positive integer", 0
 nzpi_overflow       BYTE "Input too large! (Cannot be larger than 4294967295)", 0
-nzpf_invalid        BYTE "Invalid input! Please enter a non-zero positive decimal", 0
-nzpf_empty          BYTE "Please enter a non-zero positive decimal", 0
+nzpf_invalid        BYTE "Invalid input! Please enter a non-zero positive integer or fraction", 0
+nzpf_empty          BYTE "Please enter a non-zero positive integer or fraction", 0
 nzpf_overflow       BYTE "Input too large! (Cannot be larger than 4294967167)", 0
 menu_invalid_input  BYTE "Invalid input!", 0
 
