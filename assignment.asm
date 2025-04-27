@@ -71,7 +71,7 @@ menu_username_dialog    BYTE "Currently logged in as: ", 0
 
 option_loan     BYTE    "Compute loan EMI (Estimated Monthly Instalment)", 0
 option_interest BYTE    "Compute compound interest", 0
-option_debt     BYTE    "Compute Debt-to-Interest ratio", 0
+option_debt     BYTE    "Compute Debt-to-Income ratio", 0
 option_summary  BYTE    "Summary Report", 0
 option_logout   BYTE    "Log out", 0
 option_exit     BYTE    "Exit", 0
@@ -94,7 +94,7 @@ summary_print_file_dialog   BYTE "Save to file (empty input to cancel): ", 0
 
 summary_loan_dialog             BYTE "Loan EMI (Estimated Monthly Instalment):", 0
 summary_interest_dialog         BYTE "Compound interest:", 0
-summary_debt_dialog             BYTE "Debt-to-Interest ratio", 0
+summary_debt_dialog             BYTE "Debt-to-Income ratio", 0
 summary_empty_dialog            BYTE "No data", 0
 summary_wait_dialog             BYTE "Press any key to return to main menu", 0
 summary_print_success_dialog    BYTE "Report was successfully printed!", 0
