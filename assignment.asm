@@ -526,9 +526,9 @@ interest:
     fld interest_r
     fdiv float_hundred
     fidiv interest_n
-
     fld1
     fadd
+
     fyl2x
     fld1
     fld st(1)
